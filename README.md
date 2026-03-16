@@ -2,7 +2,7 @@
 
 Agent-first collaborative drawing built on [Excalidraw](https://excalidraw.com).
 
-Agents control the canvas via REST API. Humans interact via the browser GUI. Changes sync in real-time over WebSocket. Auto-saves to server on every change.
+Agents control the canvas via REST API. Humans interact via the full Excalidraw GUI in the browser. All changes auto-save to server and sync in real-time over WebSocket.
 
 ## Quick Start
 
@@ -15,9 +15,21 @@ npm run dev
 - **API**: http://localhost:3001/api/canvases
 - **WebSocket**: ws://localhost:3001/ws?canvasId=`<id>`
 
-## Agent API
+## GUI Features
 
-All endpoints accept/return JSON. Elements use the [Excalidraw element format](https://docs.excalidraw.com/).
+The browser UI is a full-featured Excalidraw editor:
+
+- All drawing tools (Rectangle, Diamond, Ellipse, Arrow, Line, Freedraw, Text, Image, Eraser)
+- Property panel (stroke/fill color, stroke width/style, sloppiness, edges, opacity, layers)
+- File menu (Open, Export Image, Save To, Reset Canvas, Dark Mode, Canvas Background, Help)
+- Keyboard shortcuts (R for rectangle, A for arrow, Cmd+Z undo, etc.)
+- Auto-save indicator (top-right green dot)
+
+Open a canvas at `http://localhost:5173/?canvas=<id>`.
+
+## REST API
+
+Base URL: `http://localhost:3001`
 
 ### Canvases
 
@@ -35,47 +47,23 @@ All endpoints accept/return JSON. Elements use the [Excalidraw element format](h
 |--------|----------|-------------|
 | `PUT` | `/api/canvases/:id/elements` | Replace all elements. Body: `{ elements: [...] }`. Auto-broadcasts to connected browsers. |
 
-### Visual Feedback (Screenshots & SVG)
+### Visual Feedback
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/canvases/:id/screenshot` | PNG via browser relay, falls back to SVG if no browser connected |
+| `GET` | `/api/canvases/:id/screenshot` | PNG via browser relay, auto-falls back to SVG if no browser connected |
 | `GET` | `/api/canvases/:id/screenshot?format=base64` | Returns `{ dataUrl }` JSON |
-| `GET` | `/api/canvases/:id/screenshot?format=svg` | Force SVG output (always works, no browser needed) |
-| `GET` | `/api/canvases/:id/svg` | Direct SVG render from element data (always works, no browser needed) |
+| `GET` | `/api/canvases/:id/screenshot?format=svg` | Force SVG output |
+| `GET` | `/api/canvases/:id/svg` | Server-side SVG render (always works, no browser needed) |
 
-The screenshot endpoint tries the browser client first (highest fidelity PNG via WebSocket relay), then falls back to server-side SVG rendering. The `/svg` endpoint always uses server-side rendering.
-
-## Agent Workflow Example
-
-```bash
-# 1. Create a canvas
-curl -X POST http://localhost:3001/api/canvases \
-  -H 'Content-Type: application/json' \
-  -d '{"name": "My Diagram"}'
-# → { "id": "abc123", ... }
-
-# 2. Push elements
-curl -X PUT http://localhost:3001/api/canvases/abc123/elements \
-  -H 'Content-Type: application/json' \
-  -d '{"elements": [{"type":"rectangle","id":"r1","x":100,"y":100,"width":200,"height":100}]}'
-
-# 3. Get visual feedback (works with or without browser)
-curl http://localhost:3001/api/canvases/abc123/svg -o preview.svg
-
-# 4. Optionally open in browser for human viewing
-open "http://localhost:5173/?canvas=abc123"
-
-# 5. High-fidelity screenshot (requires browser to be open)
-curl http://localhost:3001/api/canvases/abc123/screenshot -o screenshot.png
-```
+The `/svg` endpoint always works without a browser. The `/screenshot` endpoint tries the browser first for high-fidelity PNG, then falls back to server-side SVG.
 
 ## WebSocket Protocol
 
 Connect to `ws://localhost:3001/ws?canvasId=<id>`.
 
 **Server -> Client:**
-- `canvas:loaded` — initial state on connect
+- `canvas:loaded` — full canvas state on connect
 - `elements:update` — element changes from other clients or the API
 - `screenshot:request` — asks browser to render a screenshot
 
@@ -101,5 +89,5 @@ Agent (HTTP)                    Browser (WS + GUI)
 - **Frontend**: Vite + React 18 + @excalidraw/excalidraw
 - **Backend**: Express + ws
 - **Database**: SQLite via better-sqlite3 + Drizzle ORM
-- **SVG Renderer**: Custom server-side Excalidraw element-to-SVG converter
+- **SVG Renderer**: Server-side Excalidraw element-to-SVG converter
 - **Dev**: tsx + concurrently
