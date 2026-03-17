@@ -19,5 +19,16 @@ export function initDb() {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `)
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS snapshots (
+      id TEXT PRIMARY KEY,
+      canvas_id TEXT NOT NULL,
+      name TEXT NOT NULL DEFAULT 'Snapshot',
+      elements TEXT NOT NULL DEFAULT '[]',
+      app_state TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (canvas_id) REFERENCES canvases(id) ON DELETE CASCADE
+    )
+  `)
   console.log('Database initialized')
 }

@@ -2,7 +2,7 @@
 
 Agent-first collaborative drawing built on [Excalidraw](https://excalidraw.com).
 
-Agents control the canvas via REST API. Humans interact via the full Excalidraw GUI in the browser. All changes auto-save to server and sync in real-time over WebSocket.
+Agents control the canvas via REST API or MCP. Humans interact via the full Excalidraw GUI in the browser. All changes auto-save to server and sync in real-time.
 
 ## Quick Start
 
@@ -13,7 +13,24 @@ npm run dev
 
 - **Frontend**: http://localhost:5173
 - **API**: http://localhost:3001/api/canvases
+- **MCP**: `npm run mcp` (stdio transport for Claude Code, etc.)
 - **WebSocket**: ws://localhost:3001/ws?canvasId=`<id>`
+
+## Agent Features
+
+See [AGENTS.md](AGENTS.md) for comprehensive agent instructions.
+
+- **PATCH elements** — add, update, or remove individual elements without full replacement
+- **Element queries** — filter by type, ID, or spatial proximity
+- **Scene description** — structured text summary of canvas contents (no image processing needed)
+- **Templates** — generate flowcharts, sequence diagrams, and mindmaps from structured data
+- **Layout helpers** — auto-align, distribute, and grid-arrange elements
+- **Snapshots** — save/restore canvas versions for safe experimentation
+- **Validation** — check element JSON before pushing
+- **Export** — download as `.excalidraw` file
+- **SSE events** — subscribe to real-time changes over plain HTTP
+- **Screenshots** — PNG via browser relay or server-side SVG (always works headless)
+- **MCP server** — 15 tools for native integration with Claude Code and other MCP clients
 
 ## GUI Features
 
@@ -27,61 +44,17 @@ The browser UI is a full-featured Excalidraw editor:
 
 Open a canvas at `http://localhost:5173/?canvas=<id>`.
 
-## REST API
-
-Base URL: `http://localhost:3001`
-
-### Canvases
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/canvases` | Create canvas. Body: `{ name?, elements? }` |
-| `GET` | `/api/canvases` | List all canvases |
-| `GET` | `/api/canvases/:id` | Get canvas with elements |
-| `PATCH` | `/api/canvases/:id` | Update metadata. Body: `{ name }` |
-| `DELETE` | `/api/canvases/:id` | Delete canvas |
-
-### Elements
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `PUT` | `/api/canvases/:id/elements` | Replace all elements. Body: `{ elements: [...] }`. Auto-broadcasts to connected browsers. |
-
-### Visual Feedback
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/canvases/:id/screenshot` | PNG via browser relay, auto-falls back to SVG if no browser connected |
-| `GET` | `/api/canvases/:id/screenshot?format=base64` | Returns `{ dataUrl }` JSON |
-| `GET` | `/api/canvases/:id/screenshot?format=svg` | Force SVG output |
-| `GET` | `/api/canvases/:id/svg` | Server-side SVG render (always works, no browser needed) |
-
-The `/svg` endpoint always works without a browser. The `/screenshot` endpoint tries the browser first for high-fidelity PNG, then falls back to server-side SVG.
-
-## WebSocket Protocol
-
-Connect to `ws://localhost:3001/ws?canvasId=<id>`.
-
-**Server -> Client:**
-- `canvas:loaded` — full canvas state on connect
-- `elements:update` — element changes from other clients or the API
-- `screenshot:request` — asks browser to render a screenshot
-
-**Client -> Server:**
-- `elements:update` — user made changes in the GUI
-- `screenshot:response` — rendered screenshot data
-
 ## Architecture
 
 ```
-Agent (HTTP)                    Browser (WS + GUI)
+Agent (HTTP/MCP)                Browser (WS + GUI)
      |                               |
      |   REST /api/*                  |   WS /ws?canvasId=<id>
+     |   SSE /api/.../events          |
      |                               |
      +------>  Express Server  <------+
-               |             |
-          SVG Renderer    SQLite
-         (server/render)  (excalidraw.db)
+               |      |      |
+          SVG Render  SQLite  Snapshots
 ```
 
 ## Tech Stack
@@ -89,5 +62,6 @@ Agent (HTTP)                    Browser (WS + GUI)
 - **Frontend**: Vite + React 18 + @excalidraw/excalidraw
 - **Backend**: Express + ws
 - **Database**: SQLite via better-sqlite3 + Drizzle ORM
+- **MCP**: Standalone stdio JSON-RPC server (no SDK dependency)
 - **SVG Renderer**: Server-side Excalidraw element-to-SVG converter
 - **Dev**: tsx + concurrently

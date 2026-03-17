@@ -8,7 +8,8 @@
     "dev:client": "vite",
     "dev:server": "tsx watch server/index.ts",
     "build": "vite build",
-    "start": "tsx server/index.ts"
+    "start": "tsx server/index.ts",
+    "mcp": "tsx server/mcp.ts"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.0",

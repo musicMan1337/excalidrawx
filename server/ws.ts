@@ -7,6 +7,22 @@ import { eq } from 'drizzle-orm'
 // Canvas ID → connected clients
 const canvasClients = new Map<string, Set<WebSocket>>()
 
+// SSE event subscribers
+type EventCallback = (event: any) => void
+const eventSubscribers = new Map<string, Set<EventCallback>>()
+
+export function subscribeToCanvas(canvasId: string, callback: EventCallback): () => void {
+  if (!eventSubscribers.has(canvasId)) {
+    eventSubscribers.set(canvasId, new Set())
+  }
+  eventSubscribers.get(canvasId)!.add(callback)
+  return () => { eventSubscribers.get(canvasId)?.delete(callback) }
+}
+
+function emitEvent(canvasId: string, event: any) {
+  eventSubscribers.get(canvasId)?.forEach(cb => cb(event))
+}
+
 // Pending screenshot requests
 const screenshotRequests = new Map<string, {
   resolve: (dataUrl: string) => void
@@ -79,6 +95,13 @@ function handleMessage(ws: WebSocket, canvasId: string, msg: any) {
         elements: msg.elements,
         source: 'client',
       }, ws)
+
+      // Notify SSE subscribers
+      emitEvent(canvasId, {
+        type: 'elements:update',
+        elements: msg.elements,
+        source: 'client',
+      })
       break
     }
 
@@ -107,6 +130,13 @@ function broadcast(canvasId: string, msg: object, exclude?: WebSocket) {
 /** Broadcast element updates from the REST API to all WS clients */
 export function broadcastToCanvas(canvasId: string, elements: object[]) {
   broadcast(canvasId, {
+    type: 'elements:update',
+    elements,
+    source: 'api',
+  })
+
+  // Notify SSE subscribers
+  emitEvent(canvasId, {
     type: 'elements:update',
     elements,
     source: 'api',
