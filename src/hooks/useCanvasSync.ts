@@ -58,8 +58,8 @@ export function useCanvasSync({ canvasId, apiRef, onSaveStatusChange, onScreensh
             isRemoteUpdate.current = false
             // Scroll viewport to show content after loading
             setTimeout(() => {
-              try { api.scrollToContent(undefined, { fitToContent: true, animate: false }) } catch {}
-            }, 100)
+              try { api.scrollToContent() } catch {}
+            }, 200)
           }
           onSaveStatusChange?.('saved')
           break
