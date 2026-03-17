@@ -5,6 +5,7 @@ interface ExcalidrawAPI {
   getAppState(): Record<string, any>
   getFiles(): Record<string, any>
   updateScene(scene: { elements?: readonly any[] }): void
+  scrollToContent(target?: any, opts?: { fitToContent?: boolean; animate?: boolean }): void
 }
 
 type SaveStatus = 'saved' | 'saving' | 'unsaved'
@@ -55,6 +56,10 @@ export function useCanvasSync({ canvasId, apiRef, onSaveStatusChange, onScreensh
             isRemoteUpdate.current = true
             api.updateScene({ elements })
             isRemoteUpdate.current = false
+            // Scroll viewport to show content after loading
+            setTimeout(() => {
+              try { api.scrollToContent(undefined, { fitToContent: true, animate: false }) } catch {}
+            }, 100)
           }
           onSaveStatusChange?.('saved')
           break
