@@ -5,7 +5,8 @@ var execSync = require("child_process").execSync;
 var MANAGED_MARKER = "# [managed by install-hooks]";
 
 function installHook(hookName, scriptPath) {
-  var hooksDir = path.join(".git", "hooks");
+  var gitDir = execSync("git rev-parse --git-dir", { encoding: "utf8" }).trim();
+  var hooksDir = path.join(gitDir, "hooks");
   var hookFile = path.join(hooksDir, hookName);
   var line = 'bash "$(git rev-parse --show-toplevel)/' + scriptPath + '"';
   var markedLine = line + "  " + MANAGED_MARKER;
