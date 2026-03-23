@@ -21,6 +21,7 @@ function installHook(hookName, scriptPath) {
       return false;
     }
     fs.appendFileSync(hookFile, "\n" + markedLine + "\n");
+    fs.chmodSync(hookFile, 0o755);
   } else {
     fs.writeFileSync(hookFile, "#!/bin/bash\n" + markedLine + "\n", {
       mode: 0o755,
