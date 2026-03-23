@@ -30,7 +30,7 @@ while IFS= read -r agents_file; do
   else
     make_symlink "$dir/CLAUDE.md" "AGENTS.md"
   fi
-done < <(git ls-files | grep "AGENTS\.md$")
+done < <(git ls-files | grep "AGENTS\.md$" || true)
 
 # GitHub Copilot
 if [ -f "AGENTS.md" ]; then
