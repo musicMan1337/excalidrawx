@@ -61,7 +61,18 @@ If no prompt was provided, ask what they want to draw.
 2. **Design the elements** — based on the user's prompt, design the Excalidraw elements array. Think about layout, colors, grouping, and readability. Use the palettes and patterns from the reference.
 3. **Render it** — call `mcp__excalidraw__create_view` with your elements JSON array.
 4. **Save a checkpoint** — call `mcp__excalidraw__save_checkpoint` so the user can restore later.
-5. **Report back** — tell the user what you created and where to view it.
+5. **Save to a canvas** — create a new canvas on the ExcalidrawX API and push the elements so the diagram persists in the app:
+   ```bash
+   # Create canvas
+   curl -s -X POST http://localhost:3001/api/canvases \
+     -H 'Content-Type: application/json' \
+     -d '{"name": "Diagram Name"}'
+   # Push elements (use the same elements array, minus any cameraUpdate/delete/restoreCheckpoint pseudo-elements)
+   curl -s -X PUT http://localhost:3001/api/canvases/<id>/elements \
+     -H 'Content-Type: application/json' \
+     -d '{"elements": [...]}'
+   ```
+6. **Report back** — tell the user what you created and that they can view it at http://localhost:5173 on the named canvas.
 
 ### Design Guidelines
 
