@@ -1,0 +1,4 @@
+post-checkout:
+  commands:
+    agent-symlinks:
+      run: bash scripts/setup-agent-symlinks.sh

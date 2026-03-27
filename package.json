@@ -4,13 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "node scripts/install-hooks.js",
     "dev": "concurrently -k \"npm run dev:server\" \"npm run dev:client\"",
     "dev:client": "vite",
     "dev:server": "tsx watch server/index.ts",
     "build": "vite build",
     "start": "tsx server/index.ts",
-    "mcp": "tsx server/mcp.ts"
+    "mcp": "tsx server/mcp.ts",
+    "prepare": "lefthook install || true"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.0",
@@ -35,6 +35,7 @@
     "concurrently": "^9.1.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "lefthook": "2.1.4"
   }
 }
