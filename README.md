@@ -23,6 +23,7 @@ ExcalidrawX includes a built-in MCP (Model Context Protocol) server that exposes
 ### How it works
 
 The MCP server is a standalone process (`server/mcp.ts`) that:
+
 1. Communicates via **stdio** using the standard MCP JSON-RPC transport
 2. Translates tool calls into HTTP requests to the ExcalidrawX REST API
 3. Returns structured results (JSON, images) back to the client
@@ -31,23 +32,23 @@ The API server must be running (`npm run dev`) for the MCP server to work.
 
 ### Available tools (15)
 
-| Tool | Description |
-|------|-------------|
-| `create_canvas` | Create a new canvas. Params: `name?`, `elements?` |
-| `list_canvases` | List all canvases |
-| `get_canvas` | Get canvas details with elements. Params: `canvas_id` |
-| `set_elements` | Replace all elements (full overwrite). Params: `canvas_id`, `elements` |
-| `patch_elements` | Add/update/remove individual elements. Params: `canvas_id`, `add?`, `update?`, `remove?` |
-| `query_elements` | Query by type, ID, or spatial proximity. Params: `canvas_id`, `type?`, `ids?`, `near?` |
-| `describe_canvas` | Text description of canvas contents. Params: `canvas_id` |
-| `screenshot` | Visual screenshot (base64 PNG or SVG). Params: `canvas_id`, `format?` |
-| `validate_elements` | Check element JSON for errors. Params: `elements` |
-| `apply_template` | Generate flowchart/sequence/mindmap. Params: `canvas_id`, `template_type`, `data` |
-| `layout_elements` | Auto-align, distribute, or grid arrange. Params: `canvas_id`, `action`, `ids` |
-| `save_snapshot` | Save canvas state. Params: `canvas_id`, `name?` |
-| `list_snapshots` | List saved snapshots. Params: `canvas_id` |
-| `restore_snapshot` | Restore a snapshot. Params: `canvas_id`, `snapshot_id` |
-| `export_canvas` | Export as .excalidraw JSON. Params: `canvas_id` |
+| Tool                | Description                                                                              |
+| ------------------- | ---------------------------------------------------------------------------------------- |
+| `create_canvas`     | Create a new canvas. Params: `name?`, `elements?`                                        |
+| `list_canvases`     | List all canvases                                                                        |
+| `get_canvas`        | Get canvas details with elements. Params: `canvas_id`                                    |
+| `set_elements`      | Replace all elements (full overwrite). Params: `canvas_id`, `elements`                   |
+| `patch_elements`    | Add/update/remove individual elements. Params: `canvas_id`, `add?`, `update?`, `remove?` |
+| `query_elements`    | Query by type, ID, or spatial proximity. Params: `canvas_id`, `type?`, `ids?`, `near?`   |
+| `describe_canvas`   | Text description of canvas contents. Params: `canvas_id`                                 |
+| `screenshot`        | Visual screenshot (base64 PNG or SVG). Params: `canvas_id`, `format?`                    |
+| `validate_elements` | Check element JSON for errors. Params: `elements`                                        |
+| `apply_template`    | Generate flowchart/sequence/mindmap. Params: `canvas_id`, `template_type`, `data`        |
+| `layout_elements`   | Auto-align, distribute, or grid arrange. Params: `canvas_id`, `action`, `ids`            |
+| `save_snapshot`     | Save canvas state. Params: `canvas_id`, `name?`                                          |
+| `list_snapshots`    | List saved snapshots. Params: `canvas_id`                                                |
+| `restore_snapshot`  | Restore a snapshot. Params: `canvas_id`, `snapshot_id`                                   |
+| `export_canvas`     | Export as .excalidraw JSON. Params: `canvas_id`                                          |
 
 ### Configuration
 
@@ -75,12 +76,12 @@ Add ExcalidrawX to your Claude Code MCP configuration. Edit `~/.claude/claude_de
 
 Then in Claude Code, you can say things like:
 
-- *"Create a canvas called Architecture Diagram"*
-- *"Draw a flowchart with nodes: User, API, Database"*
-- *"Take a screenshot of my canvas"*
-- *"Add a red rectangle at position 100,200"*
-- *"Describe what's on the canvas"*
-- *"Save a snapshot before I make changes"*
+- _"Create a canvas called Architecture Diagram"_
+- _"Draw a flowchart with nodes: User, API, Database"_
+- _"Take a screenshot of my canvas"_
+- _"Add a red rectangle at position 100,200"_
+- _"Describe what's on the canvas"_
+- _"Save a snapshot before I make changes"_
 
 Claude Code will automatically call the appropriate ExcalidrawX MCP tools.
 
@@ -140,27 +141,27 @@ Open a canvas at `http://localhost:5173/?canvas=<id>`.
 
 Base URL: `http://localhost:3001`
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/canvases` | Create canvas |
-| `GET` | `/api/canvases` | List canvases |
-| `GET` | `/api/canvases/:id` | Get canvas |
-| `PATCH` | `/api/canvases/:id` | Update name |
-| `DELETE` | `/api/canvases/:id` | Delete canvas |
-| `PUT` | `/api/canvases/:id/elements` | Replace all elements |
-| `PATCH` | `/api/canvases/:id/elements` | Add/update/remove elements |
-| `GET` | `/api/canvases/:id/elements` | Query elements |
-| `GET` | `/api/canvases/:id/describe` | Text description |
-| `POST` | `/api/canvases/:id/validate` | Validate element JSON |
-| `GET` | `/api/canvases/:id/export` | Export as .excalidraw |
-| `GET` | `/api/canvases/:id/screenshot` | PNG or SVG screenshot |
-| `GET` | `/api/canvases/:id/svg` | Server-side SVG render |
-| `POST` | `/api/canvases/:id/template` | Generate diagram from data |
-| `POST` | `/api/canvases/:id/layout` | Auto-layout elements |
-| `GET` | `/api/canvases/:id/events` | SSE event stream |
-| `POST` | `/api/canvases/:id/snapshots` | Save snapshot |
-| `GET` | `/api/canvases/:id/snapshots` | List snapshots |
-| `POST` | `/api/canvases/:id/snapshots/:sid/restore` | Restore snapshot |
+| Method   | Endpoint                                   | Description                |
+| -------- | ------------------------------------------ | -------------------------- |
+| `POST`   | `/api/canvases`                            | Create canvas              |
+| `GET`    | `/api/canvases`                            | List canvases              |
+| `GET`    | `/api/canvases/:id`                        | Get canvas                 |
+| `PATCH`  | `/api/canvases/:id`                        | Update name                |
+| `DELETE` | `/api/canvases/:id`                        | Delete canvas              |
+| `PUT`    | `/api/canvases/:id/elements`               | Replace all elements       |
+| `PATCH`  | `/api/canvases/:id/elements`               | Add/update/remove elements |
+| `GET`    | `/api/canvases/:id/elements`               | Query elements             |
+| `GET`    | `/api/canvases/:id/describe`               | Text description           |
+| `POST`   | `/api/canvases/:id/validate`               | Validate element JSON      |
+| `GET`    | `/api/canvases/:id/export`                 | Export as .excalidraw      |
+| `GET`    | `/api/canvases/:id/screenshot`             | PNG or SVG screenshot      |
+| `GET`    | `/api/canvases/:id/svg`                    | Server-side SVG render     |
+| `POST`   | `/api/canvases/:id/template`               | Generate diagram from data |
+| `POST`   | `/api/canvases/:id/layout`                 | Auto-layout elements       |
+| `GET`    | `/api/canvases/:id/events`                 | SSE event stream           |
+| `POST`   | `/api/canvases/:id/snapshots`              | Save snapshot              |
+| `GET`    | `/api/canvases/:id/snapshots`              | List snapshots             |
+| `POST`   | `/api/canvases/:id/snapshots/:sid/restore` | Restore snapshot           |
 
 ## Architecture
 

@@ -17,7 +17,7 @@ app.use('/api', agentRouter)
 setupWebSocket(server)
 initDb()
 
-const PORT = parseInt(process.env.PORT || '3001')
+const PORT = parseInt(process.env['PORT'] ?? '3001')
 server.listen(PORT, () => {
   console.log(`ExcalidrawX server on http://localhost:${PORT}`)
   console.log(`  API:       http://localhost:${PORT}/api/canvases`)

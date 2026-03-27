@@ -4,7 +4,6 @@ dist/
 *.db-wal
 *.db-shm
 .env
-.claude
 
 # Agents
 SPEC*
@@ -14,3 +13,8 @@ PLAN*
 **/CLAUDE.md
 .github/copilot-instructions.md
 .cursor/rules/main.mdc
+.planning/codebase
+
+# Claude Code (allow settings.json for portable MCP config)
+.claude/*
+!.claude/settings.json

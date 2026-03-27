@@ -5,33 +5,80 @@ import { eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { broadcastToCanvas, subscribeToCanvas } from '../ws.js'
 
+interface ExcalidrawElement {
+  id: string
+  type: string
+  x: number
+  y: number
+  width: number
+  height: number
+  strokeColor?: string
+  backgroundColor?: string
+  fillStyle?: string
+  strokeWidth?: number
+  opacity?: number
+  angle?: number
+  roughness?: number
+  roundness?: { type: number } | null
+  isDeleted?: boolean
+  seed?: number
+  version?: number
+  versionNonce?: number
+  text?: string
+  fontSize?: number
+  fontFamily?: number
+  textAlign?: string
+  verticalAlign?: string
+  containerId?: string | null
+  originalText?: string
+  points?: [number, number][]
+  startBinding?: { elementId: string; focus: number; gap: number }
+  endBinding?: { elementId: string; focus: number; gap: number }
+  endArrowhead?: string | null
+  startArrowhead?: string | null
+  strokeStyle?: string
+  boundElements?: { id: string; type: string }[]
+}
+
+interface ElementDescription {
+  id: string
+  type: string
+  position: string
+  size: string
+  label: string | null
+  color: string | null
+}
+
 export const agentRouter = Router()
 
 // ---------------------------------------------------------------------------
 // PATCH /canvases/:id/elements — partial element updates
 // ---------------------------------------------------------------------------
-agentRouter.patch('/canvases/:id/elements', (req, res) => {
+agentRouter.patch('/canvases/:id/elements', (req, res): void => {
   const canvas = db.select().from(canvases).where(eq(canvases.id, req.params.id)).get()
-  if (!canvas) return res.status(404).json({ error: 'Canvas not found' })
+  if (!canvas) {
+    res.status(404).json({ error: 'Canvas not found' })
+    return
+  }
 
   const { add, update, remove } = req.body as {
-    add?: object[]
-    update?: object[]
+    add?: Partial<ExcalidrawElement>[]
+    update?: Partial<ExcalidrawElement>[]
     remove?: string[]
   }
 
-  let elements: any[] = JSON.parse(canvas.elements)
+  let elements: ExcalidrawElement[] = JSON.parse(canvas.elements) as ExcalidrawElement[]
 
   // Remove elements by ID
   if (remove && remove.length > 0) {
     const removeSet = new Set(remove)
-    elements = elements.filter((el: any) => !removeSet.has(el.id))
+    elements = elements.filter((el) => !removeSet.has(el.id))
   }
 
   // Update elements by merging fields
   if (update && update.length > 0) {
-    const updateMap = new Map(update.map((el: any) => [el.id, el]))
-    elements = elements.map((el: any) => {
+    const updateMap = new Map(update.map((el) => [el.id, el]))
+    elements = elements.map((el) => {
       const patch = updateMap.get(el.id)
       return patch ? { ...el, ...patch } : el
     })
@@ -39,16 +86,18 @@ agentRouter.patch('/canvases/:id/elements', (req, res) => {
 
   // Add new elements
   if (add && add.length > 0) {
-    elements.push(...add)
+    elements.push(...(add as ExcalidrawElement[]))
   }
 
-  const updated = db.update(canvases)
+  const updated = db
+    .update(canvases)
     .set({
       elements: JSON.stringify(elements),
       updatedAt: new Date().toISOString(),
     })
     .where(eq(canvases.id, req.params.id))
-    .returning().get()
+    .returning()
+    .get()
 
   broadcastToCanvas(req.params.id, elements)
 
@@ -58,34 +107,39 @@ agentRouter.patch('/canvases/:id/elements', (req, res) => {
 // ---------------------------------------------------------------------------
 // GET /canvases/:id/elements — query elements with filters
 // ---------------------------------------------------------------------------
-agentRouter.get('/canvases/:id/elements', (req, res) => {
+agentRouter.get('/canvases/:id/elements', (req, res): void => {
   const canvas = db.select().from(canvases).where(eq(canvases.id, req.params.id)).get()
-  if (!canvas) return res.status(404).json({ error: 'Canvas not found' })
+  if (!canvas) {
+    res.status(404).json({ error: 'Canvas not found' })
+    return
+  }
 
-  let elements: any[] = JSON.parse(canvas.elements)
+  let elements: ExcalidrawElement[] = JSON.parse(canvas.elements) as ExcalidrawElement[]
 
   // Filter by type
-  const type = req.query.type as string | undefined
+  const type = req.query['type'] as string | undefined
   if (type) {
-    elements = elements.filter((el: any) => el.type === type)
+    elements = elements.filter((el) => el.type === type)
   }
 
   // Filter by IDs
-  const idParam = req.query.id as string | undefined
+  const idParam = req.query['id'] as string | undefined
   if (idParam) {
     const ids = new Set(idParam.split(','))
-    elements = elements.filter((el: any) => ids.has(el.id))
+    elements = elements.filter((el) => ids.has(el.id))
   }
 
   // Spatial query: near=x,y,radius
-  const near = req.query.near as string | undefined
+  const near = req.query['near'] as string | undefined
   if (near) {
     const parts = near.split(',').map(Number)
     if (parts.length === 3 && parts.every((n) => !isNaN(n))) {
-      const [cx, cy, radius] = parts
-      elements = elements.filter((el: any) => {
-        const elCx = (el.x ?? 0) + (el.width ?? 0) / 2
-        const elCy = (el.y ?? 0) + (el.height ?? 0) / 2
+      const cx = parts[0]!
+      const cy = parts[1]!
+      const radius = parts[2]!
+      elements = elements.filter((el) => {
+        const elCx = el.x + el.width / 2
+        const elCy = el.y + el.height / 2
         const dx = elCx - cx
         const dy = elCy - cy
         return Math.sqrt(dx * dx + dy * dy) <= radius
@@ -99,28 +153,35 @@ agentRouter.get('/canvases/:id/elements', (req, res) => {
 // ---------------------------------------------------------------------------
 // GET /canvases/:id/describe — text description for non-visual agents
 // ---------------------------------------------------------------------------
-agentRouter.get('/canvases/:id/describe', (req, res) => {
+agentRouter.get('/canvases/:id/describe', (req, res): void => {
   const canvas = db.select().from(canvases).where(eq(canvases.id, req.params.id)).get()
-  if (!canvas) return res.status(404).json({ error: 'Canvas not found' })
+  if (!canvas) {
+    res.status(404).json({ error: 'Canvas not found' })
+    return
+  }
 
-  const elements: any[] = JSON.parse(canvas.elements)
+  const elements: ExcalidrawElement[] = JSON.parse(canvas.elements) as ExcalidrawElement[]
 
   if (elements.length === 0) {
-    return res.json({
+    res.json({
       summary: 'Empty canvas',
       dimensions: { width: 0, height: 0, minX: 0, minY: 0 },
       elements: [],
       connections: [],
     })
+    return
   }
 
   // Compute canvas bounds
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity
   for (const el of elements) {
-    const x = el.x ?? 0
-    const y = el.y ?? 0
-    const w = el.width ?? 0
-    const h = el.height ?? 0
+    const x = el.x
+    const y = el.y
+    const w = el.width
+    const h = el.height
     if (x < minX) minX = x
     if (y < minY) minY = y
     if (x + w > maxX) maxX = x + w
@@ -130,9 +191,9 @@ agentRouter.get('/canvases/:id/describe', (req, res) => {
   const canvasHeight = maxY - minY
 
   // Helper: compute relative position label
-  function getPosition(el: any): string {
-    const elCx = (el.x ?? 0) + (el.width ?? 0) / 2
-    const elCy = (el.y ?? 0) + (el.height ?? 0) / 2
+  function getPosition(el: ExcalidrawElement): string {
+    const elCx = el.x + el.width / 2
+    const elCy = el.y + el.height / 2
 
     const thirdW = canvasWidth / 3
     const thirdH = canvasHeight / 3
@@ -154,18 +215,18 @@ agentRouter.get('/canvases/:id/describe', (req, res) => {
   }
 
   // Build element descriptions
-  const elementDescriptions = elements.map((el: any) => ({
+  const elementDescriptions: ElementDescription[] = elements.map((el) => ({
     id: el.id,
     type: el.type,
     position: getPosition(el),
-    size: `${Math.round(el.width ?? 0)}x${Math.round(el.height ?? 0)}`,
+    size: `${Math.round(el.width)}x${Math.round(el.height)}`,
     label: el.text ?? null,
     color: el.backgroundColor ?? el.strokeColor ?? null,
   }))
 
   // Build connections from arrows with bindings
   const connections: { from: string; to: string; label: string | null }[] = []
-  const arrows = elements.filter((el: any) => el.type === 'arrow')
+  const arrows = elements.filter((el) => el.type === 'arrow')
   for (const arrow of arrows) {
     const fromId = arrow.startBinding?.elementId
     const toId = arrow.endBinding?.elementId
@@ -179,21 +240,19 @@ agentRouter.get('/canvases/:id/describe', (req, res) => {
   }
 
   // Check for text labels overlapping shapes
-  const textElements = elements.filter((el: any) => el.type === 'text')
-  const shapeElements = elements.filter((el: any) =>
-    el.type !== 'text' && el.type !== 'arrow',
-  )
+  const textElements = elements.filter((el) => el.type === 'text')
+  const shapeElements = elements.filter((el) => el.type !== 'text' && el.type !== 'arrow')
   for (const text of textElements) {
-    const tx = text.x ?? 0
-    const ty = text.y ?? 0
+    const tx = text.x
+    const ty = text.y
     for (const shape of shapeElements) {
-      const sx = shape.x ?? 0
-      const sy = shape.y ?? 0
-      const sw = shape.width ?? 0
-      const sh = shape.height ?? 0
+      const sx = shape.x
+      const sy = shape.y
+      const sw = shape.width
+      const sh = shape.height
       if (tx >= sx && tx <= sx + sw && ty >= sy && ty <= sy + sh) {
         // Text is inside this shape — update label
-        const desc = elementDescriptions.find((d: any) => d.id === shape.id)
+        const desc = elementDescriptions.find((d) => d.id === shape.id)
         if (desc && !desc.label) {
           desc.label = text.text ?? null
         }
@@ -204,14 +263,14 @@ agentRouter.get('/canvases/:id/describe', (req, res) => {
   // Build summary
   const typeCounts = new Map<string, number>()
   for (const el of elements) {
-    const t = el.type ?? 'unknown'
+    const t = el.type
     typeCounts.set(t, (typeCounts.get(t) ?? 0) + 1)
   }
-  const parts: string[] = []
+  const summaryParts: string[] = []
   for (const [t, count] of typeCounts) {
-    parts.push(`${count} ${t}${count > 1 ? 's' : ''}`)
+    summaryParts.push(`${count} ${t}${count > 1 ? 's' : ''}`)
   }
-  const summary = `Canvas with ${parts.join(', ')}`
+  const summary = `Canvas with ${summaryParts.join(', ')}`
 
   res.json({
     summary,
@@ -229,22 +288,31 @@ agentRouter.get('/canvases/:id/describe', (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /canvases/:id/validate — validate element JSON
 // ---------------------------------------------------------------------------
-agentRouter.post('/canvases/:id/validate', (req, res) => {
-  const { elements } = req.body as { elements: any[] }
+agentRouter.post('/canvases/:id/validate', (req, res): void => {
+  const { elements } = req.body as { elements: unknown[] }
   if (!Array.isArray(elements)) {
-    return res.status(400).json({ valid: false, errors: ['elements must be an array'] })
+    res.status(400).json({ valid: false, errors: ['elements must be an array'] })
+    return
   }
 
   const validTypes = new Set([
-    'rectangle', 'ellipse', 'diamond', 'line', 'arrow',
-    'text', 'freedraw', 'image', 'frame', 'embeddable',
+    'rectangle',
+    'ellipse',
+    'diamond',
+    'line',
+    'arrow',
+    'text',
+    'freedraw',
+    'image',
+    'frame',
+    'embeddable',
   ])
 
   const errors: string[] = []
   const seenIds = new Set<string>()
 
   for (let i = 0; i < elements.length; i++) {
-    const el = elements[i]
+    const el = elements[i] as Record<string, unknown> | undefined
     const prefix = `elements[${i}]`
 
     if (!el || typeof el !== 'object') {
@@ -252,18 +320,18 @@ agentRouter.post('/canvases/:id/validate', (req, res) => {
       continue
     }
 
-    if (!el.type) errors.push(`${prefix}: missing required field "type"`)
-    else if (!validTypes.has(el.type)) errors.push(`${prefix}: invalid type "${el.type}"`)
+    if (!el['type']) errors.push(`${prefix}: missing required field "type"`)
+    else if (!validTypes.has(el['type'] as string)) errors.push(`${prefix}: invalid type "${el['type'] as string}"`)
 
-    if (!el.id) errors.push(`${prefix}: missing required field "id"`)
-    else if (seenIds.has(el.id)) errors.push(`${prefix}: duplicate id "${el.id}"`)
-    else seenIds.add(el.id)
+    if (!el['id']) errors.push(`${prefix}: missing required field "id"`)
+    else if (seenIds.has(el['id'] as string)) errors.push(`${prefix}: duplicate id "${el['id'] as string}"`)
+    else seenIds.add(el['id'] as string)
 
-    if (el.x === undefined || el.x === null) errors.push(`${prefix}: missing required field "x"`)
-    else if (typeof el.x !== 'number') errors.push(`${prefix}: "x" must be a number`)
+    if (el['x'] === undefined || el['x'] === null) errors.push(`${prefix}: missing required field "x"`)
+    else if (typeof el['x'] !== 'number') errors.push(`${prefix}: "x" must be a number`)
 
-    if (el.y === undefined || el.y === null) errors.push(`${prefix}: missing required field "y"`)
-    else if (typeof el.y !== 'number') errors.push(`${prefix}: "y" must be a number`)
+    if (el['y'] === undefined || el['y'] === null) errors.push(`${prefix}: missing required field "y"`)
+    else if (typeof el['y'] !== 'number') errors.push(`${prefix}: "y" must be a number`)
   }
 
   res.json({ valid: errors.length === 0, errors })
@@ -272,12 +340,15 @@ agentRouter.post('/canvases/:id/validate', (req, res) => {
 // ---------------------------------------------------------------------------
 // GET /canvases/:id/export — export as .excalidraw JSON file
 // ---------------------------------------------------------------------------
-agentRouter.get('/canvases/:id/export', (req, res) => {
+agentRouter.get('/canvases/:id/export', (req, res): void => {
   const canvas = db.select().from(canvases).where(eq(canvases.id, req.params.id)).get()
-  if (!canvas) return res.status(404).json({ error: 'Canvas not found' })
+  if (!canvas) {
+    res.status(404).json({ error: 'Canvas not found' })
+    return
+  }
 
-  const elements = JSON.parse(canvas.elements)
-  const appState = JSON.parse(canvas.appState)
+  const elements = JSON.parse(canvas.elements) as ExcalidrawElement[]
+  const appState = JSON.parse(canvas.appState) as Record<string, unknown>
 
   const excalidrawFile = {
     type: 'excalidraw',
@@ -296,31 +367,29 @@ agentRouter.get('/canvases/:id/export', (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /canvases/:id/layout — auto-layout helpers
 // ---------------------------------------------------------------------------
-agentRouter.post('/canvases/:id/layout', (req, res) => {
+agentRouter.post('/canvases/:id/layout', (req, res): void => {
   const canvas = db.select().from(canvases).where(eq(canvases.id, req.params.id)).get()
-  if (!canvas) return res.status(404).json({ error: 'Canvas not found' })
+  if (!canvas) {
+    res.status(404).json({ error: 'Canvas not found' })
+    return
+  }
 
   const { action, axis, params } = req.body as {
     action: 'align' | 'distribute' | 'grid'
     axis?: 'x' | 'y'
-    params?: any
+    params?: { ids?: string[]; to?: string; columns?: number; gap?: number }
   }
 
-  if (!action) {
-    return res.status(400).json({ error: 'action is required' })
-  }
-
-  const elements: any[] = JSON.parse(canvas.elements)
+  const elements: ExcalidrawElement[] = JSON.parse(canvas.elements) as ExcalidrawElement[]
   const ids: string[] = params?.ids ?? []
   const idSet = new Set(ids)
 
   // Get the target elements and their indices in the full array
-  const targets = elements
-    .map((el: any, idx: number) => ({ el, idx }))
-    .filter(({ el }: any) => idSet.has(el.id))
+  const targets = elements.map((el, idx) => ({ el, idx })).filter(({ el }) => idSet.has(el.id))
 
   if (targets.length === 0) {
-    return res.status(400).json({ error: 'No matching elements found for provided ids' })
+    res.status(400).json({ error: 'No matching elements found for provided ids' })
+    return
   }
 
   switch (action) {
@@ -331,9 +400,9 @@ agentRouter.post('/canvases/:id/layout', (req, res) => {
       if (alignAxis === 'x') {
         // Align left edges
         let target: number
-        if (alignTo === 'min') target = Math.min(...targets.map(({ el }: any) => el.x ?? 0))
-        else if (alignTo === 'max') target = Math.max(...targets.map(({ el }: any) => el.x ?? 0))
-        else target = targets.reduce((sum: number, { el }: any) => sum + (el.x ?? 0), 0) / targets.length
+        if (alignTo === 'min') target = Math.min(...targets.map(({ el }) => el.x))
+        else if (alignTo === 'max') target = Math.max(...targets.map(({ el }) => el.x))
+        else target = targets.reduce((sum, { el }) => sum + el.x, 0) / targets.length
 
         for (const { el, idx } of targets) {
           elements[idx] = { ...el, x: target }
@@ -341,9 +410,9 @@ agentRouter.post('/canvases/:id/layout', (req, res) => {
       } else {
         // Align top edges
         let target: number
-        if (alignTo === 'min') target = Math.min(...targets.map(({ el }: any) => el.y ?? 0))
-        else if (alignTo === 'max') target = Math.max(...targets.map(({ el }: any) => el.y ?? 0))
-        else target = targets.reduce((sum: number, { el }: any) => sum + (el.y ?? 0), 0) / targets.length
+        if (alignTo === 'min') target = Math.min(...targets.map(({ el }) => el.y))
+        else if (alignTo === 'max') target = Math.max(...targets.map(({ el }) => el.y))
+        else target = targets.reduce((sum, { el }) => sum + el.y, 0) / targets.length
 
         for (const { el, idx } of targets) {
           elements[idx] = { ...el, y: target }
@@ -356,27 +425,28 @@ agentRouter.post('/canvases/:id/layout', (req, res) => {
       const distAxis = axis ?? 'x'
 
       if (targets.length < 3) {
-        return res.status(400).json({ error: 'distribute requires at least 3 elements' })
+        res.status(400).json({ error: 'distribute requires at least 3 elements' })
+        return
       }
 
       if (distAxis === 'x') {
-        const sorted = [...targets].sort((a, b) => (a.el.x ?? 0) - (b.el.x ?? 0))
-        const first = sorted[0].el.x ?? 0
-        const last = sorted[sorted.length - 1].el.x ?? 0
+        const sorted = [...targets].sort((a, b) => a.el.x - b.el.x)
+        const first = sorted[0]!.el.x
+        const last = sorted[sorted.length - 1]!.el.x
         const step = (last - first) / (sorted.length - 1)
 
         for (let i = 0; i < sorted.length; i++) {
-          const { el, idx } = sorted[i]
+          const { el, idx } = sorted[i]!
           elements[idx] = { ...el, x: first + step * i }
         }
       } else {
-        const sorted = [...targets].sort((a, b) => (a.el.y ?? 0) - (b.el.y ?? 0))
-        const first = sorted[0].el.y ?? 0
-        const last = sorted[sorted.length - 1].el.y ?? 0
+        const sorted = [...targets].sort((a, b) => a.el.y - b.el.y)
+        const first = sorted[0]!.el.y
+        const last = sorted[sorted.length - 1]!.el.y
         const step = (last - first) / (sorted.length - 1)
 
         for (let i = 0; i < sorted.length; i++) {
-          const { el, idx } = sorted[i]
+          const { el, idx } = sorted[i]!
           elements[idx] = { ...el, y: first + step * i }
         }
       }
@@ -388,20 +458,21 @@ agentRouter.post('/canvases/:id/layout', (req, res) => {
       const gap = params?.gap ?? 50
 
       // Find max element dimensions for uniform grid cells
-      let maxW = 0, maxH = 0
+      let maxW = 0,
+        maxH = 0
       for (const { el } of targets) {
-        if ((el.width ?? 0) > maxW) maxW = el.width ?? 0
-        if ((el.height ?? 0) > maxH) maxH = el.height ?? 0
+        if (el.width > maxW) maxW = el.width
+        if (el.height > maxH) maxH = el.height
       }
 
       // Use the first element's position as the grid origin
-      const originX = targets[0].el.x ?? 0
-      const originY = targets[0].el.y ?? 0
+      const originX = targets[0]!.el.x
+      const originY = targets[0]!.el.y
 
       for (let i = 0; i < targets.length; i++) {
         const col = i % columns
         const row = Math.floor(i / columns)
-        const { el, idx } = targets[i]
+        const { el, idx } = targets[i]!
         elements[idx] = {
           ...el,
           x: originX + col * (maxW + gap),
@@ -411,17 +482,21 @@ agentRouter.post('/canvases/:id/layout', (req, res) => {
       break
     }
 
-    default:
-      return res.status(400).json({ error: `Unknown action: ${action}` })
+    default: {
+      res.status(400).json({ error: `Unknown action: ${action as string}` })
+      return
+    }
   }
 
-  const updated = db.update(canvases)
+  const updated = db
+    .update(canvases)
     .set({
       elements: JSON.stringify(elements),
       updatedAt: new Date().toISOString(),
     })
     .where(eq(canvases.id, req.params.id))
-    .returning().get()
+    .returning()
+    .get()
 
   broadcastToCanvas(req.params.id, elements)
 
@@ -431,17 +506,21 @@ agentRouter.post('/canvases/:id/layout', (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /canvases/:id/template — generate diagrams from structured data
 // ---------------------------------------------------------------------------
-agentRouter.post('/canvases/:id/template', (req, res) => {
+agentRouter.post('/canvases/:id/template', (req, res): void => {
   const canvas = db.select().from(canvases).where(eq(canvases.id, req.params.id)).get()
-  if (!canvas) return res.status(404).json({ error: 'Canvas not found' })
-
-  const { type, data } = req.body as { type: string; data: any }
-  if (!type || !data) {
-    return res.status(400).json({ error: 'type and data are required' })
+  if (!canvas) {
+    res.status(404).json({ error: 'Canvas not found' })
+    return
   }
 
-  const existingElements: any[] = JSON.parse(canvas.elements)
-  let newElements: any[] = []
+  const { type, data } = req.body as { type: string; data: unknown }
+  if (!data) {
+    res.status(400).json({ error: 'type and data are required' })
+    return
+  }
+
+  const existingElements: ExcalidrawElement[] = JSON.parse(canvas.elements) as ExcalidrawElement[]
+  const newElements: Partial<ExcalidrawElement>[] = []
 
   switch (type) {
     case 'flowchart': {
@@ -451,21 +530,20 @@ agentRouter.post('/canvases/:id/template', (req, res) => {
         direction?: 'horizontal' | 'vertical'
       }
 
-      if (!nodes || !Array.isArray(nodes)) {
-        return res.status(400).json({ error: 'flowchart requires nodes array' })
-      }
-
       const isHorizontal = direction !== 'vertical'
       const nodeWidth = 160
       const nodeHeight = 80
       const hSpacing = 250
       const vSpacing = 150
 
-      const nodeMap = new Map<string, any>()
+      const nodeMap = new Map<
+        string,
+        { rect: Partial<ExcalidrawElement>; label: Partial<ExcalidrawElement>; x: number; y: number }
+      >()
 
       // Create rectangle elements for nodes
       for (let i = 0; i < nodes.length; i++) {
-        const node = nodes[i]
+        const node = nodes[i]!
         const x = isHorizontal ? i * hSpacing : 0
         const y = isHorizontal ? 0 : i * vSpacing
         const elId = nanoid(8)
@@ -475,7 +553,7 @@ agentRouter.post('/canvases/:id/template', (req, res) => {
         if (i === 0) bgColor = '#b2f2bb'
         else if (i === nodes.length - 1) bgColor = '#ffc9c9'
 
-        const rect = {
+        const rect: Partial<ExcalidrawElement> = {
           id: elId,
           type: 'rectangle',
           x,
@@ -494,7 +572,7 @@ agentRouter.post('/canvases/:id/template', (req, res) => {
           versionNonce: Math.floor(Math.random() * 2000000000),
         }
 
-        const label = {
+        const label: Partial<ExcalidrawElement> = {
           id: nanoid(8),
           type: 'text',
           x: x + nodeWidth / 2 - node.label.length * 4,
@@ -520,70 +598,63 @@ agentRouter.post('/canvases/:id/template', (req, res) => {
       }
 
       // Create arrows for edges
-      if (edges && Array.isArray(edges)) {
-        for (const edge of edges) {
-          const fromNode = nodeMap.get(edge.from)
-          const toNode = nodeMap.get(edge.to)
-          if (!fromNode || !toNode) continue
+      for (const edge of edges) {
+        const fromNode = nodeMap.get(edge.from)
+        const toNode = nodeMap.get(edge.to)
+        if (!fromNode || !toNode) continue
 
-          const startX = isHorizontal
-            ? fromNode.x + nodeWidth
-            : fromNode.x + nodeWidth / 2
-          const startY = isHorizontal
-            ? fromNode.y + nodeHeight / 2
-            : fromNode.y + nodeHeight
-          const endX = isHorizontal
-            ? toNode.x
-            : toNode.x + nodeWidth / 2
-          const endY = isHorizontal
-            ? toNode.y + nodeHeight / 2
-            : toNode.y
+        const startX = isHorizontal ? fromNode.x + nodeWidth : fromNode.x + nodeWidth / 2
+        const startY = isHorizontal ? fromNode.y + nodeHeight / 2 : fromNode.y + nodeHeight
+        const endX = isHorizontal ? toNode.x : toNode.x + nodeWidth / 2
+        const endY = isHorizontal ? toNode.y + nodeHeight / 2 : toNode.y
 
-          const arrowId = nanoid(8)
-          const arrow: any = {
-            id: arrowId,
-            type: 'arrow',
-            x: startX,
-            y: startY,
-            width: endX - startX,
-            height: endY - startY,
-            points: [[0, 0], [endX - startX, endY - startY]],
-            strokeColor: '#1e1e1e',
-            strokeWidth: 2,
-            startBinding: { elementId: fromNode.rect.id, focus: 0, gap: 1 },
-            endBinding: { elementId: toNode.rect.id, focus: 0, gap: 1 },
+        const arrowId = nanoid(8)
+        const arrow: Partial<ExcalidrawElement> = {
+          id: arrowId,
+          type: 'arrow',
+          x: startX,
+          y: startY,
+          width: endX - startX,
+          height: endY - startY,
+          points: [
+            [0, 0],
+            [endX - startX, endY - startY],
+          ],
+          strokeColor: '#1e1e1e',
+          strokeWidth: 2,
+          startBinding: { elementId: fromNode.rect.id!, focus: 0, gap: 1 },
+          endBinding: { elementId: toNode.rect.id!, focus: 0, gap: 1 },
+          isDeleted: false,
+          seed: Math.floor(Math.random() * 2000000000),
+          version: 1,
+          versionNonce: Math.floor(Math.random() * 2000000000),
+        }
+
+        if (edge.label) {
+          const labelEl: Partial<ExcalidrawElement> = {
+            id: nanoid(8),
+            type: 'text',
+            x: startX + (endX - startX) / 2 - edge.label.length * 4,
+            y: startY + (endY - startY) / 2 - 10,
+            width: edge.label.length * 8,
+            height: 20,
+            text: edge.label,
+            fontSize: 14,
+            fontFamily: 1,
+            textAlign: 'center',
+            verticalAlign: 'middle',
+            containerId: arrowId,
+            originalText: edge.label,
             isDeleted: false,
+            strokeColor: '#1e1e1e',
             seed: Math.floor(Math.random() * 2000000000),
             version: 1,
             versionNonce: Math.floor(Math.random() * 2000000000),
           }
-
-          if (edge.label) {
-            const labelEl = {
-              id: nanoid(8),
-              type: 'text',
-              x: startX + (endX - startX) / 2 - edge.label.length * 4,
-              y: startY + (endY - startY) / 2 - 10,
-              width: edge.label.length * 8,
-              height: 20,
-              text: edge.label,
-              fontSize: 14,
-              fontFamily: 1,
-              textAlign: 'center',
-              verticalAlign: 'middle',
-              containerId: arrowId,
-              originalText: edge.label,
-              isDeleted: false,
-              strokeColor: '#1e1e1e',
-              seed: Math.floor(Math.random() * 2000000000),
-              version: 1,
-              versionNonce: Math.floor(Math.random() * 2000000000),
-            }
-            newElements.push(labelEl)
-          }
-
-          newElements.push(arrow)
+          newElements.push(labelEl)
         }
+
+        newElements.push(arrow)
       }
       break
     }
@@ -592,10 +663,6 @@ agentRouter.post('/canvases/:id/template', (req, res) => {
       const { actors, messages } = data as {
         actors: string[]
         messages: { from: string; to: string; label?: string }[]
-      }
-
-      if (!actors || !Array.isArray(actors)) {
-        return res.status(400).json({ error: 'sequence requires actors array' })
       }
 
       const actorSpacing = 200
@@ -609,8 +676,9 @@ agentRouter.post('/canvases/:id/template', (req, res) => {
 
       // Create actor boxes
       for (let i = 0; i < actors.length; i++) {
+        const actor = actors[i]!
         const x = i * actorSpacing
-        actorPositions.set(actors[i], x + actorBoxWidth / 2)
+        actorPositions.set(actor, x + actorBoxWidth / 2)
 
         // Actor box
         const boxId = nanoid(8)
@@ -635,17 +703,17 @@ agentRouter.post('/canvases/:id/template', (req, res) => {
         newElements.push({
           id: nanoid(8),
           type: 'text',
-          x: x + actorBoxWidth / 2 - actors[i].length * 4,
+          x: x + actorBoxWidth / 2 - actor.length * 4,
           y: startY + actorBoxHeight / 2 - 10,
-          width: actors[i].length * 8,
+          width: actor.length * 8,
           height: 20,
-          text: actors[i],
+          text: actor,
           fontSize: 16,
           fontFamily: 1,
           textAlign: 'center',
           verticalAlign: 'middle',
           containerId: boxId,
-          originalText: actors[i],
+          originalText: actor,
           isDeleted: false,
           strokeColor: '#1e1e1e',
           seed: Math.floor(Math.random() * 2000000000),
@@ -654,7 +722,7 @@ agentRouter.post('/canvases/:id/template', (req, res) => {
         })
 
         // Dashed vertical lifeline
-        const lineHeight = (messages?.length ?? 3) * messageSpacing + 60
+        const lineHeight = messages.length * messageSpacing + 60
         newElements.push({
           id: nanoid(8),
           type: 'line',
@@ -662,7 +730,10 @@ agentRouter.post('/canvases/:id/template', (req, res) => {
           y: startY + actorBoxHeight,
           width: 0,
           height: lineHeight,
-          points: [[0, 0], [0, lineHeight]],
+          points: [
+            [0, 0],
+            [0, lineHeight],
+          ],
           strokeColor: '#868e96',
           strokeWidth: 1,
           strokeStyle: 'dashed',
@@ -674,49 +745,50 @@ agentRouter.post('/canvases/:id/template', (req, res) => {
       }
 
       // Create message arrows
-      if (messages && Array.isArray(messages)) {
-        for (let i = 0; i < messages.length; i++) {
-          const msg = messages[i]
-          const fromX = actorPositions.get(msg.from) ?? 0
-          const toX = actorPositions.get(msg.to) ?? 0
-          const y = messagesStartY + i * messageSpacing
+      for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i]!
+        const fromX = actorPositions.get(msg.from) ?? 0
+        const toX = actorPositions.get(msg.to) ?? 0
+        const y = messagesStartY + i * messageSpacing
 
-          const arrowId = nanoid(8)
+        const arrowId = nanoid(8)
+        newElements.push({
+          id: arrowId,
+          type: 'arrow',
+          x: fromX,
+          y,
+          width: toX - fromX,
+          height: 0,
+          points: [
+            [0, 0],
+            [toX - fromX, 0],
+          ],
+          strokeColor: '#1e1e1e',
+          strokeWidth: 2,
+          isDeleted: false,
+          seed: Math.floor(Math.random() * 2000000000),
+          version: 1,
+          versionNonce: Math.floor(Math.random() * 2000000000),
+        })
+
+        if (msg.label) {
           newElements.push({
-            id: arrowId,
-            type: 'arrow',
-            x: fromX,
-            y,
-            width: toX - fromX,
-            height: 0,
-            points: [[0, 0], [toX - fromX, 0]],
-            strokeColor: '#1e1e1e',
-            strokeWidth: 2,
+            id: nanoid(8),
+            type: 'text',
+            x: Math.min(fromX, toX) + Math.abs(toX - fromX) / 2 - msg.label.length * 4,
+            y: y - 20,
+            width: msg.label.length * 8,
+            height: 20,
+            text: msg.label,
+            fontSize: 14,
+            fontFamily: 1,
+            textAlign: 'center',
             isDeleted: false,
+            strokeColor: '#1e1e1e',
             seed: Math.floor(Math.random() * 2000000000),
             version: 1,
             versionNonce: Math.floor(Math.random() * 2000000000),
           })
-
-          if (msg.label) {
-            newElements.push({
-              id: nanoid(8),
-              type: 'text',
-              x: Math.min(fromX, toX) + Math.abs(toX - fromX) / 2 - msg.label.length * 4,
-              y: y - 20,
-              width: msg.label.length * 8,
-              height: 20,
-              text: msg.label,
-              fontSize: 14,
-              fontFamily: 1,
-              textAlign: 'center',
-              isDeleted: false,
-              strokeColor: '#1e1e1e',
-              seed: Math.floor(Math.random() * 2000000000),
-              version: 1,
-              versionNonce: Math.floor(Math.random() * 2000000000),
-            })
-          }
         }
       }
       break
@@ -726,10 +798,6 @@ agentRouter.post('/canvases/:id/template', (req, res) => {
       const { root, children } = data as {
         root: string
         children?: { label: string; children?: { label: string }[] }[]
-      }
-
-      if (!root) {
-        return res.status(400).json({ error: 'mindmap requires root' })
       }
 
       const centerX = 400
@@ -780,13 +848,13 @@ agentRouter.post('/canvases/:id/template', (req, res) => {
         versionNonce: Math.floor(Math.random() * 2000000000),
       })
 
-      if (children && Array.isArray(children) && children.length > 0) {
+      if (children && children.length > 0) {
         const childCount = children.length
         for (let i = 0; i < childCount; i++) {
           const angle = (2 * Math.PI * i) / childCount - Math.PI / 2
           const childX = centerX + Math.cos(angle) * radiusX
           const childY = centerY + Math.sin(angle) * radiusY
-          const child = children[i]
+          const child = children[i]!
 
           const childNodeWidth = Math.max(child.label.length * 10, 80)
           const childNodeHeight = 40
@@ -840,7 +908,10 @@ agentRouter.post('/canvases/:id/template', (req, res) => {
             y: centerY,
             width: childX - centerX,
             height: childY - centerY,
-            points: [[0, 0], [childX - centerX, childY - centerY]],
+            points: [
+              [0, 0],
+              [childX - centerX, childY - centerY],
+            ],
             strokeColor: '#1e1e1e',
             strokeWidth: 2,
             isDeleted: false,
@@ -850,7 +921,7 @@ agentRouter.post('/canvases/:id/template', (req, res) => {
           })
 
           // Grandchildren
-          if (child.children && Array.isArray(child.children) && child.children.length > 0) {
+          if (child.children && child.children.length > 0) {
             const gcRadius = 120
             const gcCount = child.children.length
             for (let j = 0; j < gcCount; j++) {
@@ -858,7 +929,7 @@ agentRouter.post('/canvases/:id/template', (req, res) => {
               const gcAngle = angle - Math.PI / 4 + (Math.PI / 2) * (j / Math.max(gcCount - 1, 1))
               const gcX = childX + Math.cos(gcAngle) * gcRadius
               const gcY = childY + Math.sin(gcAngle) * gcRadius
-              const gc = child.children[j]
+              const gc = child.children[j]!
 
               const gcNodeWidth = Math.max(gc.label.length * 10, 60)
               const gcNodeHeight = 30
@@ -910,7 +981,10 @@ agentRouter.post('/canvases/:id/template', (req, res) => {
                 y: childY,
                 width: gcX - childX,
                 height: gcY - childY,
-                points: [[0, 0], [gcX - childX, gcY - childY]],
+                points: [
+                  [0, 0],
+                  [gcX - childX, gcY - childY],
+                ],
                 strokeColor: '#868e96',
                 strokeWidth: 1,
                 isDeleted: false,
@@ -925,20 +999,24 @@ agentRouter.post('/canvases/:id/template', (req, res) => {
       break
     }
 
-    default:
-      return res.status(400).json({ error: `Unknown template type: ${type}` })
+    default: {
+      res.status(400).json({ error: `Unknown template type: ${type}` })
+      return
+    }
   }
 
   // Append new elements to existing canvas
-  const allElements = [...existingElements, ...newElements]
+  const allElements = [...existingElements, ...(newElements as ExcalidrawElement[])]
 
-  const updated = db.update(canvases)
+  const updated = db
+    .update(canvases)
     .set({
       elements: JSON.stringify(allElements),
       updatedAt: new Date().toISOString(),
     })
     .where(eq(canvases.id, req.params.id))
-    .returning().get()
+    .returning()
+    .get()
 
   broadcastToCanvas(req.params.id, allElements)
 
@@ -948,18 +1026,21 @@ agentRouter.post('/canvases/:id/template', (req, res) => {
 // ---------------------------------------------------------------------------
 // GET /canvases/:id/events — SSE event stream
 // ---------------------------------------------------------------------------
-agentRouter.get('/canvases/:id/events', (req, res) => {
+agentRouter.get('/canvases/:id/events', (req, res): void => {
   const canvas = db.select().from(canvases).where(eq(canvases.id, req.params.id)).get()
-  if (!canvas) return res.status(404).json({ error: 'Canvas not found' })
+  if (!canvas) {
+    res.status(404).json({ error: 'Canvas not found' })
+    return
+  }
 
   res.set({
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
+    Connection: 'keep-alive',
   })
   res.flushHeaders()
 
-  const unsubscribe = subscribeToCanvas(req.params.id, (event: any) => {
+  const unsubscribe = subscribeToCanvas(req.params.id, (event: unknown) => {
     res.write(`data: ${JSON.stringify(event)}\n\n`)
   })
 
@@ -971,19 +1052,26 @@ agentRouter.get('/canvases/:id/events', (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /canvases/:id/snapshots — save a named snapshot
 // ---------------------------------------------------------------------------
-agentRouter.post('/canvases/:id/snapshots', (req, res) => {
+agentRouter.post('/canvases/:id/snapshots', (req, res): void => {
   const canvas = db.select().from(canvases).where(eq(canvases.id, req.params.id)).get()
-  if (!canvas) return res.status(404).json({ error: 'Canvas not found' })
+  if (!canvas) {
+    res.status(404).json({ error: 'Canvas not found' })
+    return
+  }
 
   const { name } = req.body as { name?: string }
 
-  const snapshot = db.insert(snapshots).values({
-    id: nanoid(12),
-    canvasId: req.params.id,
-    name: name || `Snapshot ${new Date().toISOString()}`,
-    elements: canvas.elements,
-    appState: canvas.appState,
-  }).returning().get()
+  const snapshot = db
+    .insert(snapshots)
+    .values({
+      id: nanoid(12),
+      canvasId: req.params.id,
+      name: name ?? `Snapshot ${new Date().toISOString()}`,
+      elements: canvas.elements,
+      appState: canvas.appState,
+    })
+    .returning()
+    .get()
 
   res.status(201).json(snapshot)
 })
@@ -991,12 +1079,13 @@ agentRouter.post('/canvases/:id/snapshots', (req, res) => {
 // ---------------------------------------------------------------------------
 // GET /canvases/:id/snapshots — list snapshots
 // ---------------------------------------------------------------------------
-agentRouter.get('/canvases/:id/snapshots', (req, res) => {
-  const allSnapshots = db.select({
-    id: snapshots.id,
-    name: snapshots.name,
-    createdAt: snapshots.createdAt,
-  })
+agentRouter.get('/canvases/:id/snapshots', (req, res): void => {
+  const allSnapshots = db
+    .select({
+      id: snapshots.id,
+      name: snapshots.name,
+      createdAt: snapshots.createdAt,
+    })
     .from(snapshots)
     .where(eq(snapshots.canvasId, req.params.id))
     .all()
@@ -1007,25 +1096,26 @@ agentRouter.get('/canvases/:id/snapshots', (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /canvases/:id/snapshots/:snapshotId/restore — restore a snapshot
 // ---------------------------------------------------------------------------
-agentRouter.post('/canvases/:id/snapshots/:snapshotId/restore', (req, res) => {
-  const snapshot = db.select().from(snapshots)
-    .where(eq(snapshots.id, req.params.snapshotId))
-    .get()
+agentRouter.post('/canvases/:id/snapshots/:snapshotId/restore', (req, res): void => {
+  const snapshot = db.select().from(snapshots).where(eq(snapshots.id, req.params.snapshotId)).get()
 
-  if (!snapshot || snapshot.canvasId !== req.params.id) {
-    return res.status(404).json({ error: 'Snapshot not found' })
+  if (snapshot?.canvasId !== req.params.id) {
+    res.status(404).json({ error: 'Snapshot not found' })
+    return
   }
 
-  const elements = JSON.parse(snapshot.elements)
+  const elements = JSON.parse(snapshot.elements) as ExcalidrawElement[]
 
-  const updated = db.update(canvases)
+  const updated = db
+    .update(canvases)
     .set({
       elements: snapshot.elements,
       appState: snapshot.appState,
       updatedAt: new Date().toISOString(),
     })
     .where(eq(canvases.id, req.params.id))
-    .returning().get()
+    .returning()
+    .get()
 
   broadcastToCanvas(req.params.id, elements)
 

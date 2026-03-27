@@ -28,15 +28,17 @@ make_symlink() {
   ln -s "$target" "$link"
 }
 
-# CLAUDE.md symlinks (one per AGENTS.md found in repo)
+# CLAUDE.md symlink (root)
+if [ -f "AGENTS.md" ]; then
+  make_symlink "CLAUDE.md" "AGENTS.md"
+fi
+
+# CLAUDE.md symlinks (subdirectories — tracked files only)
 while IFS= read -r agents_file; do
   dir="$(dirname "$agents_file")"
-  if [ "$dir" = "." ]; then
-    make_symlink "CLAUDE.md" "AGENTS.md"
-  else
-    make_symlink "$dir/CLAUDE.md" "AGENTS.md"
-  fi
-done < <(git ls-files | grep "AGENTS\.md$" || true)
+  [ "$dir" = "." ] && continue
+  make_symlink "$dir/CLAUDE.md" "AGENTS.md"
+done < <(git ls-files -- '**/AGENTS.md' || true)
 
 # GitHub Copilot
 if [ -f "AGENTS.md" ]; then
@@ -48,8 +50,25 @@ if [ -f "AGENTS.md" ]; then
   make_symlink ".cursor/rules/main.mdc" "../../AGENTS.md"
 fi
 
-# GSD codebase (symlink .planning/codebase to .agent/codebase)
-if [ -d ".agent/codebase" ]; then
+# Bootstrap .agent/skills if missing
+if [ ! -d ".agent/skills" ]; then
+  mkdir -p ".agent/skills"
+  touch ".agent/skills/.gitkeep"
+fi
+
+# Codebase: consolidate .planning/codebase → .agent/codebase on demand
+if [ -d ".planning/codebase" ] && [ ! -L ".planning/codebase" ]; then
+  mkdir -p ".agent/codebase"
+  # Move contents into .agent/codebase, then remove the real directory
+  for item in .planning/codebase/*; do
+    [ -e "$item" ] || continue
+    name="$(basename "$item")"
+    [ ! -e ".agent/codebase/$name" ] && mv "$item" ".agent/codebase/"
+  done
+  rm -rf ".planning/codebase"
+  make_symlink ".planning/codebase" "../.agent/codebase"
+elif [ -d ".agent/codebase" ]; then
+  # Source exists — ensure symlink is in place
   make_symlink ".planning/codebase" "../.agent/codebase"
 fi
 
@@ -65,6 +84,15 @@ if [ -d ".agent/skills" ]; then
   for skill_dir in .agent/skills/*/; do
     [ -d "$skill_dir" ] || continue
     skill_name="$(basename "$skill_dir")"
+    [ "${skill_name#.}" != "$skill_name" ] && continue
+    make_symlink ".claude/commands/$skill_name" "../../.agent/skills/$skill_name"
+  done
+
+  # Individual skill files
+  for skill_file in .agent/skills/*.md; do
+    [ -f "$skill_file" ] || continue
+    skill_name="$(basename "$skill_file")"
+    [ "${skill_name#.}" != "$skill_name" ] && continue
     make_symlink ".claude/commands/$skill_name" "../../.agent/skills/$skill_name"
   done
 fi

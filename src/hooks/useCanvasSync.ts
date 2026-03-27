@@ -1,27 +1,52 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 
-interface ExcalidrawAPI {
-  getSceneElements(): readonly any[]
-  getAppState(): Record<string, any>
-  getFiles(): Record<string, any>
-  updateScene(scene: { elements?: readonly any[] }): void
-  scrollToContent(target?: any, opts?: { fitToContent?: boolean; animate?: boolean }): void
+type SaveStatus = 'saved' | 'saving' | 'unsaved'
+
+interface ScreenshotOptions {
+  width?: number
+  height?: number
+  background?: boolean
 }
 
-type SaveStatus = 'saved' | 'saving' | 'unsaved'
+interface WsCanvasLoaded {
+  type: 'canvas:loaded'
+  canvas: { elements: string }
+}
+
+interface WsElementsUpdate {
+  type: 'elements:update'
+  elements: readonly Record<string, unknown>[]
+}
+
+interface WsScreenshotRequest {
+  type: 'screenshot:request'
+  requestId: string
+  options?: ScreenshotOptions
+}
+
+type WsMessage = WsCanvasLoaded | WsElementsUpdate | WsScreenshotRequest
+
+export interface ExcalidrawAPI {
+  getSceneElements(): readonly Record<string, unknown>[]
+  getAppState(): Record<string, unknown>
+  getFiles(): Record<string, unknown>
+  updateScene(scene: { elements?: readonly Record<string, unknown>[] }): void
+  scrollToContent(): void
+}
 
 interface UseCanvasSyncOptions {
   canvasId: string | null
   apiRef: React.MutableRefObject<ExcalidrawAPI | null>
   onSaveStatusChange?: (status: SaveStatus) => void
-  onScreenshotRequest: (
-    requestId: string,
-    options?: { width?: number; height?: number; background?: boolean },
-  ) => Promise<string | null>
+  onScreenshotRequest: (requestId: string, options?: ScreenshotOptions) => Promise<string | null>
+}
+
+interface VersionedElement {
+  version?: number
 }
 
 export function useCanvasSync({ canvasId, apiRef, onSaveStatusChange, onScreenshotRequest }: UseCanvasSyncOptions) {
-  const [initialElements, setInitialElements] = useState<any[]>([])
+  const [initialElements, setInitialElements] = useState<Record<string, unknown>[]>([])
   const [isConnected, setIsConnected] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
   const isRemoteUpdate = useRef(false)
@@ -31,7 +56,7 @@ export function useCanvasSync({ canvasId, apiRef, onSaveStatusChange, onScreensh
   const lastVersionSum = useRef(0)
 
   useEffect(() => {
-    if (!canvasId) return
+    if (!canvasId) return undefined
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const ws = new WebSocket(`${protocol}//${window.location.host}/ws?canvasId=${canvasId}`)
@@ -39,15 +64,14 @@ export function useCanvasSync({ canvasId, apiRef, onSaveStatusChange, onScreensh
 
     ws.onopen = () => {
       setIsConnected(true)
-      console.log('[sync] connected')
     }
 
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data)
+    ws.onmessage = (event: MessageEvent) => {
+      const msg = JSON.parse(event.data as string) as WsMessage
 
       switch (msg.type) {
         case 'canvas:loaded': {
-          const elements = JSON.parse(msg.canvas.elements)
+          const elements = JSON.parse(msg.canvas.elements) as Record<string, unknown>[]
           setInitialElements(elements)
           initialized.current = true
 
@@ -56,9 +80,12 @@ export function useCanvasSync({ canvasId, apiRef, onSaveStatusChange, onScreensh
             isRemoteUpdate.current = true
             api.updateScene({ elements })
             isRemoteUpdate.current = false
-            // Scroll viewport to show content after loading
             setTimeout(() => {
-              try { api.scrollToContent() } catch {}
+              try {
+                api.scrollToContent()
+              } catch {
+                // scrollToContent may fail if canvas is empty
+              }
             }, 200)
           }
           onSaveStatusChange?.('saved')
@@ -76,13 +103,15 @@ export function useCanvasSync({ canvasId, apiRef, onSaveStatusChange, onScreensh
         }
 
         case 'screenshot:request': {
-          onScreenshotRequest(msg.requestId, msg.options).then((dataUrl) => {
+          void onScreenshotRequest(msg.requestId, msg.options).then((dataUrl) => {
             if (dataUrl && ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({
-                type: 'screenshot:response',
-                requestId: msg.requestId,
-                dataUrl,
-              }))
+              ws.send(
+                JSON.stringify({
+                  type: 'screenshot:response',
+                  requestId: msg.requestId,
+                  dataUrl,
+                }),
+              )
             }
           })
           break
@@ -92,45 +121,49 @@ export function useCanvasSync({ canvasId, apiRef, onSaveStatusChange, onScreensh
 
     ws.onclose = () => {
       setIsConnected(false)
-      console.log('[sync] disconnected')
     }
 
     return () => {
       ws.close()
       wsRef.current = null
     }
-  }, [canvasId])
+  }, [canvasId, apiRef, onSaveStatusChange, onScreenshotRequest])
 
-  const onElementsChange = useCallback((elements: readonly any[]) => {
-    if (isRemoteUpdate.current || !initialized.current) return
+  const onElementsChange = useCallback(
+    (elements: readonly VersionedElement[]) => {
+      if (isRemoteUpdate.current || !initialized.current) return
 
-    // Cheap change detection: sum of element versions + count
-    const versionSum = elements.reduce((sum, el) => sum + (el.version || 0), 0) + elements.length
-    if (versionSum === lastVersionSum.current) return
-    lastVersionSum.current = versionSum
+      // Cheap change detection: sum of element versions + count
+      const versionSum = elements.reduce((sum, el) => sum + (el.version ?? 0), 0) + elements.length
+      if (versionSum === lastVersionSum.current) return
+      lastVersionSum.current = versionSum
 
-    onSaveStatusChange?.('unsaved')
+      onSaveStatusChange?.('unsaved')
 
-    // Debounce to avoid flooding the server
-    if (debounceTimer.current) clearTimeout(debounceTimer.current)
-    debounceTimer.current = setTimeout(() => {
-      const ws = wsRef.current
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        onSaveStatusChange?.('saving')
-        ws.send(JSON.stringify({
-          type: 'elements:update',
-          canvasId,
-          elements,
-        }))
+      // Debounce to avoid flooding the server
+      if (debounceTimer.current) clearTimeout(debounceTimer.current)
+      debounceTimer.current = setTimeout(() => {
+        const ws = wsRef.current
+        if (ws?.readyState === WebSocket.OPEN) {
+          onSaveStatusChange?.('saving')
+          ws.send(
+            JSON.stringify({
+              type: 'elements:update',
+              canvasId,
+              elements,
+            }),
+          )
 
-        // Mark as saved after a short delay (server doesn't ack)
-        if (saveConfirmTimer.current) clearTimeout(saveConfirmTimer.current)
-        saveConfirmTimer.current = setTimeout(() => {
-          onSaveStatusChange?.('saved')
-        }, 500)
-      }
-    }, 300)
-  }, [canvasId, onSaveStatusChange])
+          // Mark as saved after a short delay (server doesn't ack)
+          if (saveConfirmTimer.current) clearTimeout(saveConfirmTimer.current)
+          saveConfirmTimer.current = setTimeout(() => {
+            onSaveStatusChange?.('saved')
+          }, 500)
+        }
+      }, 300)
+    },
+    [canvasId, onSaveStatusChange],
+  )
 
   return { initialElements, onElementsChange, isConnected }
 }

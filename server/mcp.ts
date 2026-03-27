@@ -9,7 +9,7 @@
  * Env:   EXCALIDRAWX_API=http://localhost:3001  (default)
  */
 
-const API_BASE = process.env.EXCALIDRAWX_API || 'http://localhost:3001'
+const API_BASE = process.env['EXCALIDRAWX_API'] ?? 'http://localhost:3001'
 
 // ---------------------------------------------------------------------------
 // JSON-RPC Transport (Content-Length delimited, stdio)
@@ -46,7 +46,7 @@ function startReading(onMessage: (msg: JsonRpcRequest) => void): void {
   })
 
   function drainBuffer(): void {
-    // eslint-disable-next-line no-constant-condition
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     while (true) {
       const headerEnd = buffer.indexOf('\r\n\r\n')
       if (headerEnd === -1) return
@@ -59,7 +59,8 @@ function startReading(onMessage: (msg: JsonRpcRequest) => void): void {
         continue
       }
 
-      const contentLength = parseInt(match[1], 10)
+      // match[1] is guaranteed to exist by the regex capture group
+      const contentLength = parseInt(match[1] ?? '0', 10)
       const bodyStart = headerEnd + 4
       if (buffer.length < bodyStart + contentLength) return // need more data
 
@@ -67,7 +68,7 @@ function startReading(onMessage: (msg: JsonRpcRequest) => void): void {
       buffer = buffer.subarray(bodyStart + contentLength)
 
       try {
-        const msg = JSON.parse(bodyStr)
+        const msg = JSON.parse(bodyStr) as JsonRpcRequest
         onMessage(msg)
       } catch {
         // Ignore malformed JSON
@@ -226,7 +227,8 @@ const tools: ToolDef[] = [
         format: {
           type: 'string',
           enum: ['base64', 'svg'],
-          description: 'Output format: "base64" for a PNG/SVG image content block, "svg" for raw SVG text (default: base64)',
+          description:
+            'Output format: "base64" for a PNG/SVG image content block, "svg" for raw SVG text (default: base64)',
         },
       },
       required: ['canvas_id'],
@@ -234,7 +236,8 @@ const tools: ToolDef[] = [
   },
   {
     name: 'validate_elements',
-    description: 'Validate an array of Excalidraw element JSON objects. Checks required fields and types without needing a canvas.',
+    description:
+      'Validate an array of Excalidraw element JSON objects. Checks required fields and types without needing a canvas.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -415,9 +418,19 @@ async function apiPatch(path: string, data: unknown): Promise<{ status: number; 
 
 const REQUIRED_ELEMENT_FIELDS = ['type', 'x', 'y', 'width', 'height'] as const
 const VALID_ELEMENT_TYPES = [
-  'rectangle', 'ellipse', 'diamond', 'line', 'arrow', 'text',
-  'freedraw', 'image', 'frame', 'embeddable', 'iframe',
-  'magicframe', 'selection',
+  'rectangle',
+  'ellipse',
+  'diamond',
+  'line',
+  'arrow',
+  'text',
+  'freedraw',
+  'image',
+  'frame',
+  'embeddable',
+  'iframe',
+  'magicframe',
+  'selection',
 ]
 
 function validateElements(elements: unknown[]): { valid: boolean; errors: string[] } {
@@ -426,29 +439,30 @@ function validateElements(elements: unknown[]): { valid: boolean; errors: string
     return { valid: false, errors: ['elements must be an array'] }
   }
   for (let i = 0; i < elements.length; i++) {
-    const el = elements[i] as Record<string, unknown>
-    if (typeof el !== 'object' || el === null) {
+    const raw: unknown = elements[i]
+    if (typeof raw !== 'object' || raw === null) {
       errors.push(`elements[${i}]: must be an object`)
       continue
     }
+    const el = raw as Record<string, unknown>
     for (const field of REQUIRED_ELEMENT_FIELDS) {
       if (el[field] === undefined) {
         errors.push(`elements[${i}]: missing required field "${field}"`)
       }
     }
-    if (typeof el.type === 'string' && !VALID_ELEMENT_TYPES.includes(el.type)) {
-      errors.push(`elements[${i}]: unknown type "${el.type}"`)
+    if (typeof el['type'] === 'string' && !VALID_ELEMENT_TYPES.includes(el['type'])) {
+      errors.push(`elements[${i}]: unknown type "${el['type']}"`)
     }
-    if (el.x !== undefined && typeof el.x !== 'number') {
+    if (el['x'] !== undefined && typeof el['x'] !== 'number') {
       errors.push(`elements[${i}]: "x" must be a number`)
     }
-    if (el.y !== undefined && typeof el.y !== 'number') {
+    if (el['y'] !== undefined && typeof el['y'] !== 'number') {
       errors.push(`elements[${i}]: "y" must be a number`)
     }
-    if (el.width !== undefined && typeof el.width !== 'number') {
+    if (el['width'] !== undefined && typeof el['width'] !== 'number') {
       errors.push(`elements[${i}]: "width" must be a number`)
     }
-    if (el.height !== undefined && typeof el.height !== 'number') {
+    if (el['height'] !== undefined && typeof el['height'] !== 'number') {
       errors.push(`elements[${i}]: "height" must be a number`)
     }
   }
@@ -472,14 +486,17 @@ function errorResult(message: string): { content: ContentBlock[]; isError: true 
   return { content: [{ type: 'text', text: message }], isError: true }
 }
 
-async function handleToolCall(name: string, args: Record<string, unknown>): Promise<{ content: ContentBlock[]; isError?: boolean }> {
+async function handleToolCall(
+  name: string,
+  args: Record<string, unknown>,
+): Promise<{ content: ContentBlock[]; isError?: boolean }> {
   try {
     switch (name) {
       // ---- create_canvas ----
       case 'create_canvas': {
         const { status, body } = await apiPost('/api/canvases', {
-          name: args.name,
-          elements: args.elements,
+          name: args['name'],
+          elements: args['elements'],
         })
         if (status >= 400) return errorResult(`API error ${status}: ${JSON.stringify(body)}`)
         return { content: textContent(body) }
@@ -494,15 +511,15 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
 
       // ---- get_canvas ----
       case 'get_canvas': {
-        const { status, body } = await apiGet(`/api/canvases/${args.canvas_id}`)
+        const { status, body } = await apiGet(`/api/canvases/${String(args['canvas_id'])}`)
         if (status >= 400) return errorResult(`API error ${status}: ${JSON.stringify(body)}`)
         return { content: textContent(body) }
       }
 
       // ---- set_elements ----
       case 'set_elements': {
-        const { status, body } = await apiPut(`/api/canvases/${args.canvas_id}/elements`, {
-          elements: args.elements,
+        const { status, body } = await apiPut(`/api/canvases/${String(args['canvas_id'])}/elements`, {
+          elements: args['elements'],
         })
         if (status >= 400) return errorResult(`API error ${status}: ${JSON.stringify(body)}`)
         return { content: textContent(body) }
@@ -510,10 +527,10 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
 
       // ---- patch_elements ----
       case 'patch_elements': {
-        const { status, body } = await apiPatch(`/api/canvases/${args.canvas_id}/elements`, {
-          add: args.add,
-          update: args.update,
-          remove: args.remove,
+        const { status, body } = await apiPatch(`/api/canvases/${String(args['canvas_id'])}/elements`, {
+          add: args['add'],
+          update: args['update'],
+          remove: args['remove'],
         })
         if (status >= 400) return errorResult(`API error ${status}: ${JSON.stringify(body)}`)
         return { content: textContent(body) }
@@ -522,16 +539,16 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
       // ---- query_elements ----
       case 'query_elements': {
         const params = new URLSearchParams()
-        if (args.type) params.set('type', args.type as string)
-        if (args.ids) params.set('ids', (args.ids as string[]).join(','))
-        if (args.near) {
-          const near = args.near as { x: number; y: number; radius: number }
+        if (args['type']) params.set('type', args['type'] as string)
+        if (args['ids']) params.set('ids', (args['ids'] as string[]).join(','))
+        if (args['near']) {
+          const near = args['near'] as { x: number; y: number; radius: number }
           params.set('near_x', String(near.x))
           params.set('near_y', String(near.y))
           params.set('near_radius', String(near.radius))
         }
         const qs = params.toString()
-        const path = `/api/canvases/${args.canvas_id}/elements${qs ? '?' + qs : ''}`
+        const path = `/api/canvases/${String(args['canvas_id'])}/elements${qs ? '?' + qs : ''}`
         const { status, body } = await apiGet(path)
         if (status >= 400) return errorResult(`API error ${status}: ${JSON.stringify(body)}`)
         return { content: textContent(body) }
@@ -539,17 +556,17 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
 
       // ---- describe_canvas ----
       case 'describe_canvas': {
-        const { status, body } = await apiGet(`/api/canvases/${args.canvas_id}/describe`)
+        const { status, body } = await apiGet(`/api/canvases/${String(args['canvas_id'])}/describe`)
         if (status >= 400) return errorResult(`API error ${status}: ${JSON.stringify(body)}`)
         return { content: textContent(body) }
       }
 
       // ---- screenshot ----
       case 'screenshot': {
-        const format = (args.format as string) || 'base64'
+        const format = typeof args['format'] === 'string' ? args['format'] : 'base64'
 
         if (format === 'svg') {
-          const { status, body } = await apiGet(`/api/canvases/${args.canvas_id}/screenshot?format=svg`)
+          const { status, body } = await apiGet(`/api/canvases/${String(args['canvas_id'])}/screenshot?format=svg`)
           if (status >= 400) return errorResult(`API error ${status}: ${JSON.stringify(body)}`)
           // SVG comes back as text
           const svgText = typeof body === 'string' ? body : JSON.stringify(body)
@@ -557,17 +574,17 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
         }
 
         // base64 format
-        const res = await fetch(`${API_BASE}/api/canvases/${args.canvas_id}/screenshot?format=base64`)
+        const res = await fetch(`${API_BASE}/api/canvases/${String(args['canvas_id'])}/screenshot?format=base64`)
         if (res.status >= 400) {
           const errText = await res.text()
           return errorResult(`API error ${res.status}: ${errText}`)
         }
-        const data = await res.json() as { dataUrl?: string; format?: string }
+        const data = (await res.json()) as { dataUrl?: string; format?: string }
         if (data.dataUrl) {
           // dataUrl is like "data:image/png;base64,..." or "data:image/svg+xml;base64,..."
           const match = /^data:(image\/[^;]+);base64,(.+)$/.exec(data.dataUrl)
           if (match) {
-            return { content: imageContent(match[2], match[1]) }
+            return { content: imageContent(match[2] ?? '', match[1] ?? 'image/png') }
           }
           // Fallback: return as text
           return { content: textContent(data) }
@@ -577,15 +594,15 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
 
       // ---- validate_elements ----
       case 'validate_elements': {
-        const result = validateElements(args.elements as unknown[])
+        const result = validateElements(args['elements'] as unknown[])
         return { content: textContent(result), ...(result.valid ? {} : { isError: true }) }
       }
 
       // ---- apply_template ----
       case 'apply_template': {
-        const { status, body } = await apiPost(`/api/canvases/${args.canvas_id}/template`, {
-          template_type: args.template_type,
-          data: args.data,
+        const { status, body } = await apiPost(`/api/canvases/${String(args['canvas_id'])}/template`, {
+          template_type: args['template_type'],
+          data: args['data'],
         })
         if (status >= 400) return errorResult(`API error ${status}: ${JSON.stringify(body)}`)
         return { content: textContent(body) }
@@ -593,11 +610,11 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
 
       // ---- layout_elements ----
       case 'layout_elements': {
-        const { status, body } = await apiPost(`/api/canvases/${args.canvas_id}/layout`, {
-          action: args.action,
-          ids: args.ids,
-          axis: args.axis,
-          params: args.params,
+        const { status, body } = await apiPost(`/api/canvases/${String(args['canvas_id'])}/layout`, {
+          action: args['action'],
+          ids: args['ids'],
+          axis: args['axis'],
+          params: args['params'],
         })
         if (status >= 400) return errorResult(`API error ${status}: ${JSON.stringify(body)}`)
         return { content: textContent(body) }
@@ -605,8 +622,8 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
 
       // ---- save_snapshot ----
       case 'save_snapshot': {
-        const { status, body } = await apiPost(`/api/canvases/${args.canvas_id}/snapshots`, {
-          name: args.name,
+        const { status, body } = await apiPost(`/api/canvases/${String(args['canvas_id'])}/snapshots`, {
+          name: args['name'],
         })
         if (status >= 400) return errorResult(`API error ${status}: ${JSON.stringify(body)}`)
         return { content: textContent(body) }
@@ -614,7 +631,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
 
       // ---- list_snapshots ----
       case 'list_snapshots': {
-        const { status, body } = await apiGet(`/api/canvases/${args.canvas_id}/snapshots`)
+        const { status, body } = await apiGet(`/api/canvases/${String(args['canvas_id'])}/snapshots`)
         if (status >= 400) return errorResult(`API error ${status}: ${JSON.stringify(body)}`)
         return { content: textContent(body) }
       }
@@ -622,7 +639,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
       // ---- restore_snapshot ----
       case 'restore_snapshot': {
         const { status, body } = await apiPost(
-          `/api/canvases/${args.canvas_id}/snapshots/${args.snapshot_id}/restore`,
+          `/api/canvases/${String(args['canvas_id'])}/snapshots/${String(args['snapshot_id'])}/restore`,
           {},
         )
         if (status >= 400) return errorResult(`API error ${status}: ${JSON.stringify(body)}`)
@@ -631,7 +648,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
 
       // ---- export_canvas ----
       case 'export_canvas': {
-        const { status, body } = await apiGet(`/api/canvases/${args.canvas_id}/export`)
+        const { status, body } = await apiGet(`/api/canvases/${String(args['canvas_id'])}/export`)
         if (status >= 400) return errorResult(`API error ${status}: ${JSON.stringify(body)}`)
         return { content: textContent(body) }
       }
@@ -698,15 +715,16 @@ async function handleMessage(msg: JsonRpcRequest): Promise<void> {
         sendError(id, -32002, 'Server not initialized')
         return
       }
-      const toolName = (params as Record<string, unknown>)?.name as string
-      const toolArgs = ((params as Record<string, unknown>)?.arguments ?? {}) as Record<string, unknown>
+      const p = params
+      const toolName = (p?.['name'] ?? '') as string
+      const toolArgs = (p?.['arguments'] ?? {}) as Record<string, unknown>
 
       if (!toolName) {
         sendError(id, -32602, 'Missing tool name')
         return
       }
 
-      const toolDef = tools.find(t => t.name === toolName)
+      const toolDef = tools.find((t) => t.name === toolName)
       if (!toolDef) {
         sendError(id, -32602, `Unknown tool: ${toolName}`)
         return
@@ -731,8 +749,8 @@ async function handleMessage(msg: JsonRpcRequest): Promise<void> {
 process.on('uncaughtException', (err) => {
   process.stderr.write(`[excalidrawx-mcp] Uncaught exception: ${err.message}\n`)
 })
-process.on('unhandledRejection', (reason) => {
-  process.stderr.write(`[excalidrawx-mcp] Unhandled rejection: ${reason}\n`)
+process.on('unhandledRejection', (reason: unknown) => {
+  process.stderr.write(`[excalidrawx-mcp] Unhandled rejection: ${String(reason)}\n`)
 })
 
 // Log to stderr (stdout is reserved for JSON-RPC)
@@ -740,8 +758,8 @@ process.stderr.write('[excalidrawx-mcp] Starting MCP server...\n')
 process.stderr.write(`[excalidrawx-mcp] API base: ${API_BASE}\n`)
 
 startReading((msg) => {
-  handleMessage(msg).catch((err) => {
-    process.stderr.write(`[excalidrawx-mcp] Error handling message: ${err}\n`)
+  handleMessage(msg).catch((err: unknown) => {
+    process.stderr.write(`[excalidrawx-mcp] Error handling message: ${String(err)}\n`)
     if (msg.id !== undefined && msg.id !== null) {
       sendError(msg.id, -32603, `Internal error: ${err instanceof Error ? err.message : String(err)}`)
     }

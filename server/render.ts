@@ -39,7 +39,10 @@ function escapeXml(str: string): string {
 }
 
 function computeBounds(elements: Element[]): { minX: number; minY: number; maxX: number; maxY: number } {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity
 
   for (const el of elements) {
     if (el.isDeleted) continue
@@ -54,8 +57,8 @@ function computeBounds(elements: Element[]): { minX: number; minY: number; maxX:
     } else {
       minX = Math.min(minX, el.x)
       minY = Math.min(minY, el.y)
-      maxX = Math.max(maxX, el.x + (el.width || 0))
-      maxY = Math.max(maxY, el.y + (el.height || 0))
+      maxX = Math.max(maxX, el.x + el.width)
+      maxY = Math.max(maxY, el.y + el.height)
     }
   }
 
@@ -69,17 +72,20 @@ function computeBounds(elements: Element[]): { minX: number; minY: number; maxX:
 function renderElement(el: Element): string {
   if (el.isDeleted) return ''
 
-  const stroke = el.strokeColor || '#1e1e1e'
-  const fill = (el.backgroundColor && el.backgroundColor !== 'transparent')
-    ? el.backgroundColor
-    : 'none'
+  const stroke = el.strokeColor ?? '#1e1e1e'
+  const fill = el.backgroundColor && el.backgroundColor !== 'transparent' ? el.backgroundColor : 'none'
   const sw = el.strokeWidth ?? 2
   const opacity = (el.opacity ?? 100) / 100
-  const angle = el.angle || 0
-  const cx = el.x + (el.width || 0) / 2
-  const cy = el.y + (el.height || 0) / 2
+  const angle = el.angle ?? 0
+  const cx = el.x + el.width / 2
+  const cy = el.y + el.height / 2
   const transform = angle ? ` transform="rotate(${(angle * 180) / Math.PI} ${cx} ${cy})"` : ''
-  const dashArray = el.strokeStyle === 'dashed' ? ' stroke-dasharray="8 4"' : el.strokeStyle === 'dotted' ? ' stroke-dasharray="2 4"' : ''
+  const dashArray =
+    el.strokeStyle === 'dashed'
+      ? ' stroke-dasharray="8 4"'
+      : el.strokeStyle === 'dotted'
+        ? ' stroke-dasharray="2 4"'
+        : ''
 
   switch (el.type) {
     case 'rectangle': {
@@ -98,31 +104,32 @@ function renderElement(el: Element): string {
     }
 
     case 'text': {
-      const fontSize = el.fontSize || 20
-      const fontFamily = el.fontFamily === 2 ? 'Cascadia, monospace' : el.fontFamily === 3 ? 'Comic Sans MS, cursive' : 'Virgil, sans-serif'
+      const fontSize = el.fontSize ?? 20
+      const fontFamily =
+        el.fontFamily === 2
+          ? 'Cascadia, monospace'
+          : el.fontFamily === 3
+            ? 'Comic Sans MS, cursive'
+            : 'Virgil, sans-serif'
       const anchor = el.textAlign === 'center' ? 'middle' : el.textAlign === 'right' ? 'end' : 'start'
-      const lines = (el.text || '').split('\n')
-      const textEls = lines.map((line, i) =>
-        `<tspan x="${el.x}" dy="${i === 0 ? 0 : fontSize * 1.2}">${escapeXml(line)}</tspan>`
-      ).join('')
+      const lines = (el.text ?? '').split('\n')
+      const textEls = lines
+        .map((line, i) => `<tspan x="${el.x}" dy="${i === 0 ? 0 : fontSize * 1.2}">${escapeXml(line)}</tspan>`)
+        .join('')
       return `<text x="${el.x}" y="${el.y + fontSize}" font-size="${fontSize}" font-family="${fontFamily}" fill="${stroke}" text-anchor="${anchor}" opacity="${opacity}"${transform}>${textEls}</text>`
     }
 
     case 'arrow':
     case 'line': {
       if (!el.points || el.points.length < 2) return ''
-      const pathData = el.points.map((p, i) =>
-        `${i === 0 ? 'M' : 'L'} ${el.x + p[0]} ${el.y + p[1]}`
-      ).join(' ')
-      const markerEnd = (el.type === 'arrow' && el.endArrowhead !== null) ? ' marker-end="url(#arrowhead)"' : ''
+      const pathData = el.points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${el.x + p[0]} ${el.y + p[1]}`).join(' ')
+      const markerEnd = el.type === 'arrow' && el.endArrowhead !== null ? ' marker-end="url(#arrowhead)"' : ''
       return `<path d="${pathData}" fill="none" stroke="${stroke}" stroke-width="${sw}" opacity="${opacity}"${dashArray}${markerEnd}/>`
     }
 
     case 'freedraw': {
       if (!el.points || el.points.length < 2) return ''
-      const pathData = el.points.map((p, i) =>
-        `${i === 0 ? 'M' : 'L'} ${el.x + p[0]} ${el.y + p[1]}`
-      ).join(' ')
+      const pathData = el.points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${el.x + p[0]} ${el.y + p[1]}`).join(' ')
       return `<path d="${pathData}" fill="none" stroke="${stroke}" stroke-width="${sw}" opacity="${opacity}" stroke-linecap="round" stroke-linejoin="round"/>`
     }
 
@@ -131,14 +138,18 @@ function renderElement(el: Element): string {
   }
 }
 
-export function renderElementsToSvg(elementsJson: string, options?: { width?: number; height?: number; background?: string }): string {
-  const elements: Element[] = JSON.parse(elementsJson).filter((el: Element) => !el.isDeleted)
+export function renderElementsToSvg(
+  elementsJson: string,
+  options?: { width?: number; height?: number; background?: string },
+): string {
+  const parsed = JSON.parse(elementsJson) as Element[]
+  const elements = parsed.filter((el) => !el.isDeleted)
 
   if (elements.length === 0) {
-    const w = options?.width || 400
-    const h = options?.height || 300
+    const w = options?.width ?? 400
+    const h = options?.height ?? 300
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-  <rect width="100%" height="100%" fill="${options?.background || '#ffffff'}"/>
+  <rect width="100%" height="100%" fill="${options?.background ?? '#ffffff'}"/>
   <text x="${w / 2}" y="${h / 2}" text-anchor="middle" fill="#999" font-size="16" font-family="sans-serif">Empty canvas</text>
 </svg>`
   }
@@ -150,9 +161,9 @@ export function renderElementsToSvg(elementsJson: string, options?: { width?: nu
   const vbX = bounds.minX - padding
   const vbY = bounds.minY - padding
 
-  const w = options?.width || Math.max(contentW, 200)
-  const h = options?.height || Math.max(contentH, 200)
-  const bg = options?.background || '#ffffff'
+  const w = options?.width ?? Math.max(contentW, 200)
+  const h = options?.height ?? Math.max(contentH, 200)
+  const bg = options?.background ?? '#ffffff'
 
   const svgElements = elements.map(renderElement).filter(Boolean).join('\n  ')
 

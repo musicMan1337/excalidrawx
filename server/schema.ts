@@ -5,8 +5,12 @@ export const canvases = sqliteTable('canvases', {
   name: text('name').notNull().default('Untitled'),
   elements: text('elements').notNull().default('[]'),
   appState: text('app_state').notNull().default('{}'),
-  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
-  updatedAt: text('updated_at').notNull().$defaultFn(() => new Date().toISOString()),
+  createdAt: text('created_at')
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+  updatedAt: text('updated_at')
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
 })
 
 export const snapshots = sqliteTable('snapshots', {
@@ -15,5 +19,7 @@ export const snapshots = sqliteTable('snapshots', {
   name: text('name').notNull().default('Snapshot'),
   elements: text('elements').notNull().default('[]'),
   appState: text('app_state').notNull().default('{}'),
-  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+  createdAt: text('created_at')
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
 })

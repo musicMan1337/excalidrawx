@@ -1,31 +1,29 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Excalidraw, MainMenu, WelcomeScreen, exportToBlob } from '@excalidraw/excalidraw'
 import '@excalidraw/excalidraw/index.css'
 import { useCanvasSync } from './hooks/useCanvasSync'
+import type { ExcalidrawAPI } from './hooks/useCanvasSync'
 
-interface ExcalidrawAPI {
-  getSceneElements(): readonly any[]
-  getAppState(): Record<string, any>
-  getFiles(): Record<string, any>
-  updateScene(scene: { elements?: readonly any[] }): void
-  scrollToContent(): void
+interface Canvas {
+  id: string
+  name: string
 }
 
 export default function App() {
   const [canvasId, setCanvasId] = useState<string | null>(null)
-  const [canvasList, setCanvasList] = useState<any[]>([])
+  const [canvasList, setCanvasList] = useState<Canvas[]>([])
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved')
   const apiRef = useRef<ExcalidrawAPI | null>(null)
 
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get('canvas')
     if (id) setCanvasId(id)
-    else fetchCanvasList()
+    else void fetchCanvasList()
   }, [])
 
   const fetchCanvasList = async () => {
     const res = await fetch('/api/canvases')
-    const data = await res.json()
+    const data = (await res.json()) as { canvases: Canvas[] }
     setCanvasList(data.canvases)
   }
 
@@ -35,15 +33,12 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'New Canvas' }),
     })
-    const canvas = await res.json()
+    const canvas = (await res.json()) as Canvas
     window.location.search = `?canvas=${canvas.id}`
   }
 
-  const { initialElements, onElementsChange, isConnected } = useCanvasSync({
-    canvasId,
-    apiRef,
-    onSaveStatusChange: setSaveStatus,
-    onScreenshotRequest: async (_requestId, options) => {
+  const handleScreenshotRequest = useCallback(
+    async (_requestId: string, options?: { width?: number; height?: number; background?: boolean }) => {
       const api = apiRef.current
       if (!api) return null
 
@@ -51,8 +46,8 @@ export default function App() {
       const appState = api.getAppState()
       const files = api.getFiles()
 
-      const blob = await exportToBlob({
-        elements: elements as any,
+      const blob: Blob = await (exportToBlob as (opts: Record<string, unknown>) => Promise<Blob>)({
+        elements,
         appState: {
           ...appState,
           exportWithDarkMode: false,
@@ -60,18 +55,28 @@ export default function App() {
         },
         files,
         getDimensions: () => ({
-          width: options?.width || 1200,
-          height: options?.height || 800,
+          width: options?.width ?? 1200,
+          height: options?.height ?? 800,
           scale: 1,
         }),
       })
 
       return new Promise<string>((resolve) => {
         const reader = new FileReader()
-        reader.onloadend = () => resolve(reader.result as string)
+        reader.onloadend = () => {
+          resolve(reader.result as string)
+        }
         reader.readAsDataURL(blob)
       })
     },
+    [],
+  )
+
+  const { initialElements, onElementsChange, isConnected } = useCanvasSync({
+    canvasId,
+    apiRef,
+    onSaveStatusChange: setSaveStatus,
+    onScreenshotRequest: handleScreenshotRequest,
   })
 
   // Canvas list page
@@ -81,7 +86,7 @@ export default function App() {
         <h1>ExcalidrawX</h1>
         <p style={{ color: '#666', marginBottom: 20 }}>Agent-first collaborative drawing</p>
         <button
-          onClick={createCanvas}
+          onClick={() => void createCanvas()}
           style={{
             padding: '10px 20px',
             fontSize: 16,
@@ -112,9 +117,7 @@ export default function App() {
               <span style={{ color: '#999', marginLeft: 12, fontSize: 13 }}>{c.id}</span>
             </a>
           ))}
-          {canvasList.length === 0 && (
-            <p style={{ color: '#999' }}>No canvases yet. Create one or use the API.</p>
-          )}
+          {canvasList.length === 0 && <p style={{ color: '#999' }}>No canvases yet. Create one or use the API.</p>}
         </div>
       </div>
     )
@@ -127,31 +130,47 @@ export default function App() {
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
       <Excalidraw
-        excalidrawAPI={(api: any) => { apiRef.current = api }}
-        initialData={{ elements: initialElements }}
-        onChange={(elements: any) => onElementsChange(elements)}
+        excalidrawAPI={(api) => {
+          apiRef.current = api as unknown as ExcalidrawAPI
+        }}
+        initialData={{
+          elements: initialElements as unknown as Parameters<typeof Excalidraw>[0]['initialData'] extends infer T
+            ? T extends { elements?: infer E }
+              ? E
+              : never
+            : never,
+        }}
+        onChange={(elements) => {
+          onElementsChange(elements)
+        }}
         renderTopRightUI={() => (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '6px 12px',
-            fontFamily: 'system-ui',
-            fontSize: 13,
-          }}>
-            <span style={{
-              display: 'inline-flex',
+          <div
+            style={{
+              display: 'flex',
               alignItems: 'center',
-              gap: 4,
-              color: saveStatusColor,
-            }}>
-              <span style={{
-                width: 6,
-                height: 6,
-                borderRadius: '50%',
-                backgroundColor: isConnected ? saveStatusColor : '#ef4444',
-                display: 'inline-block',
-              }} />
+              gap: 8,
+              padding: '6px 12px',
+              fontFamily: 'system-ui',
+              fontSize: 13,
+            }}
+          >
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                color: saveStatusColor,
+              }}
+            >
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: '50%',
+                  backgroundColor: isConnected ? saveStatusColor : '#ef4444',
+                  display: 'inline-block',
+                }}
+              />
               {isConnected ? saveStatusText : 'Offline'}
             </span>
           </div>
@@ -174,9 +193,7 @@ export default function App() {
           <WelcomeScreen.Hints.MenuHint />
           <WelcomeScreen.Hints.HelpHint />
           <WelcomeScreen.Center>
-            <WelcomeScreen.Center.Heading>
-              ExcalidrawX
-            </WelcomeScreen.Center.Heading>
+            <WelcomeScreen.Center.Heading>ExcalidrawX</WelcomeScreen.Center.Heading>
             <WelcomeScreen.Center.Menu>
               <WelcomeScreen.Center.MenuItemLoadScene />
               <WelcomeScreen.Center.MenuItemHelp />

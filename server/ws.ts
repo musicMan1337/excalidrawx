@@ -8,7 +8,7 @@ import { eq } from 'drizzle-orm'
 const canvasClients = new Map<string, Set<WebSocket>>()
 
 // SSE event subscribers
-type EventCallback = (event: any) => void
+type EventCallback = (event: unknown) => void
 const eventSubscribers = new Map<string, Set<EventCallback>>()
 
 export function subscribeToCanvas(canvasId: string, callback: EventCallback): () => void {
@@ -16,24 +16,44 @@ export function subscribeToCanvas(canvasId: string, callback: EventCallback): ()
     eventSubscribers.set(canvasId, new Set())
   }
   eventSubscribers.get(canvasId)!.add(callback)
-  return () => { eventSubscribers.get(canvasId)?.delete(callback) }
+  return () => {
+    eventSubscribers.get(canvasId)?.delete(callback)
+  }
 }
 
-function emitEvent(canvasId: string, event: any) {
-  eventSubscribers.get(canvasId)?.forEach(cb => cb(event))
+function emitEvent(canvasId: string, event: unknown) {
+  eventSubscribers.get(canvasId)?.forEach((cb) => {
+    cb(event)
+  })
 }
 
 // Pending screenshot requests
-const screenshotRequests = new Map<string, {
-  resolve: (dataUrl: string) => void
-  reject: (err: Error) => void
-}>()
+const screenshotRequests = new Map<
+  string,
+  {
+    resolve: (dataUrl: string) => void
+    reject: (err: Error) => void
+  }
+>()
+
+interface WsElementsUpdate {
+  type: 'elements:update'
+  elements: unknown[]
+}
+
+interface WsScreenshotResponse {
+  type: 'screenshot:response'
+  requestId: string
+  dataUrl: string
+}
+
+type WsClientMessage = WsElementsUpdate | WsScreenshotResponse
 
 export function setupWebSocket(server: Server) {
   const wss = new WebSocketServer({ server, path: '/ws' })
 
   wss.on('connection', (ws, req) => {
-    const url = new URL(req.url || '', `http://${req.headers.host}`)
+    const url = new URL(req.url ?? '', `http://${req.headers.host ?? 'localhost'}`)
     const canvasId = url.searchParams.get('canvasId')
 
     if (!canvasId) {
@@ -50,17 +70,19 @@ export function setupWebSocket(server: Server) {
     // Send current state
     const canvas = db.select().from(canvases).where(eq(canvases.id, canvasId)).get()
     if (canvas) {
-      ws.send(JSON.stringify({
-        type: 'canvas:loaded',
-        canvas,
-      }))
+      ws.send(
+        JSON.stringify({
+          type: 'canvas:loaded',
+          canvas,
+        }),
+      )
     }
 
-    ws.on('message', (raw) => {
+    ws.on('message', (raw: Buffer) => {
       try {
-        const msg = JSON.parse(raw.toString())
+        const msg = JSON.parse(raw.toString()) as WsClientMessage
         handleMessage(ws, canvasId, msg)
-      } catch (err) {
+      } catch (err: unknown) {
         console.error('WS: invalid message', err)
       }
     })
@@ -77,7 +99,7 @@ export function setupWebSocket(server: Server) {
   return wss
 }
 
-function handleMessage(ws: WebSocket, canvasId: string, msg: any) {
+function handleMessage(ws: WebSocket, canvasId: string, msg: WsClientMessage) {
   switch (msg.type) {
     case 'elements:update': {
       // Persist
@@ -90,11 +112,15 @@ function handleMessage(ws: WebSocket, canvasId: string, msg: any) {
         .run()
 
       // Broadcast to other clients on this canvas
-      broadcast(canvasId, {
-        type: 'elements:update',
-        elements: msg.elements,
-        source: 'client',
-      }, ws)
+      broadcast(
+        canvasId,
+        {
+          type: 'elements:update',
+          elements: msg.elements,
+          source: 'client',
+        },
+        ws,
+      )
 
       // Notify SSE subscribers
       emitEvent(canvasId, {
@@ -144,15 +170,10 @@ export function broadcastToCanvas(canvasId: string, elements: object[]) {
 }
 
 /** Request a screenshot from a connected browser client */
-export function requestScreenshot(
-  canvasId: string,
-  options?: { width?: number; height?: number },
-): Promise<string> {
+export function requestScreenshot(canvasId: string, options?: { width?: number; height?: number }): Promise<string> {
   const clients = canvasClients.get(canvasId)
   if (!clients || clients.size === 0) {
-    return Promise.reject(
-      new Error('No browser client connected to this canvas. Open it in a browser first.'),
-    )
+    return Promise.reject(new Error('No browser client connected to this canvas. Open it in a browser first.'))
   }
 
   const requestId = `ss_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
@@ -175,10 +196,12 @@ export function requestScreenshot(
       },
     })
 
-    client.send(JSON.stringify({
-      type: 'screenshot:request',
-      requestId,
-      options,
-    }))
+    client.send(
+      JSON.stringify({
+        type: 'screenshot:request',
+        requestId,
+        options,
+      }),
+    )
   })
 }

@@ -23,6 +23,7 @@ Returns `{ "id": "<canvas_id>", ... }`. Save the `id` for all subsequent calls.
 ### 2. Push elements
 
 **Full replacement:**
+
 ```bash
 curl -s -X PUT http://localhost:3001/api/canvases/<id>/elements \
   -H 'Content-Type: application/json' \
@@ -30,6 +31,7 @@ curl -s -X PUT http://localhost:3001/api/canvases/<id>/elements \
 ```
 
 **Partial update (preferred for incremental edits):**
+
 ```bash
 curl -s -X PATCH http://localhost:3001/api/canvases/<id>/elements \
   -H 'Content-Type: application/json' \
@@ -76,6 +78,7 @@ The query endpoint returns `{ elements: [...] }` with parsed arrays (not stringi
 Use templates to generate common diagrams from structured data instead of placing elements manually.
 
 ### Flowchart
+
 ```bash
 curl -s -X POST http://localhost:3001/api/canvases/<id>/template \
   -H 'Content-Type: application/json' \
@@ -90,6 +93,7 @@ curl -s -X POST http://localhost:3001/api/canvases/<id>/template \
 ```
 
 ### Sequence diagram
+
 ```bash
 curl -s -X POST http://localhost:3001/api/canvases/<id>/template \
   -H 'Content-Type: application/json' \
@@ -106,6 +110,7 @@ curl -s -X POST http://localhost:3001/api/canvases/<id>/template \
 ```
 
 ### Mindmap
+
 ```bash
 curl -s -X POST http://localhost:3001/api/canvases/<id>/template \
   -H 'Content-Type: application/json' \
@@ -211,28 +216,28 @@ Elements follow the Excalidraw format. Every element needs at minimum:
 
 ### Required fields (all elements)
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `type` | string | `rectangle`, `ellipse`, `diamond`, `text`, `arrow`, `line`, `freedraw` |
-| `id` | string | Unique identifier. Must be unique across all elements. |
-| `x` | number | X position (left edge) |
-| `y` | number | Y position (top edge) |
-| `width` | number | Width (not needed for `text`, `arrow`, `line`, `freedraw`) |
-| `height` | number | Height (not needed for `text`, `arrow`, `line`, `freedraw`) |
+| Field    | Type   | Description                                                            |
+| -------- | ------ | ---------------------------------------------------------------------- |
+| `type`   | string | `rectangle`, `ellipse`, `diamond`, `text`, `arrow`, `line`, `freedraw` |
+| `id`     | string | Unique identifier. Must be unique across all elements.                 |
+| `x`      | number | X position (left edge)                                                 |
+| `y`      | number | Y position (top edge)                                                  |
+| `width`  | number | Width (not needed for `text`, `arrow`, `line`, `freedraw`)             |
+| `height` | number | Height (not needed for `text`, `arrow`, `line`, `freedraw`)            |
 
 ### Common optional fields
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `strokeColor` | string | `"#1e1e1e"` | Border/stroke color (hex) |
-| `backgroundColor` | string | `"transparent"` | Fill color. Use `"transparent"` for no fill. |
-| `fillStyle` | string | `"solid"` | `"solid"`, `"hachure"`, `"cross-hatch"` |
-| `strokeWidth` | number | `2` | Stroke thickness in pixels |
-| `strokeStyle` | string | `"solid"` | `"solid"`, `"dashed"`, `"dotted"` |
-| `roughness` | number | `1` | 0 = sharp, 1 = normal, 2 = extra sketchy |
-| `opacity` | number | `100` | 0-100 |
-| `angle` | number | `0` | Rotation in radians |
-| `roundness` | object/null | `null` | `{"type": 3}` for rounded corners, `null` for sharp |
+| Field             | Type        | Default         | Description                                         |
+| ----------------- | ----------- | --------------- | --------------------------------------------------- |
+| `strokeColor`     | string      | `"#1e1e1e"`     | Border/stroke color (hex)                           |
+| `backgroundColor` | string      | `"transparent"` | Fill color. Use `"transparent"` for no fill.        |
+| `fillStyle`       | string      | `"solid"`       | `"solid"`, `"hachure"`, `"cross-hatch"`             |
+| `strokeWidth`     | number      | `2`             | Stroke thickness in pixels                          |
+| `strokeStyle`     | string      | `"solid"`       | `"solid"`, `"dashed"`, `"dotted"`                   |
+| `roughness`       | number      | `1`             | 0 = sharp, 1 = normal, 2 = extra sketchy            |
+| `opacity`         | number      | `100`           | 0-100                                               |
+| `angle`           | number      | `0`             | Rotation in radians                                 |
+| `roundness`       | object/null | `null`          | `{"type": 3}` for rounded corners, `null` for sharp |
 
 ### Text elements
 
@@ -246,8 +251,17 @@ Elements follow the Excalidraw format. Every element needs at minimum:
 
 ```json
 {
-  "type": "arrow", "id": "a1", "x": 100, "y": 200, "width": 300, "height": 0,
-  "points": [[0, 0], [300, 0]], "endArrowhead": "arrow"
+  "type": "arrow",
+  "id": "a1",
+  "x": 100,
+  "y": 200,
+  "width": 300,
+  "height": 0,
+  "points": [
+    [0, 0],
+    [300, 0]
+  ],
+  "endArrowhead": "arrow"
 }
 ```
 
@@ -258,8 +272,17 @@ Elements follow the Excalidraw format. Every element needs at minimum:
 
 ```json
 {
-  "type": "arrow", "id": "a1", "x": 300, "y": 150, "width": 200, "height": 0,
-  "points": [[0, 0], [200, 0]], "endArrowhead": "arrow",
+  "type": "arrow",
+  "id": "a1",
+  "x": 300,
+  "y": 150,
+  "width": 200,
+  "height": 0,
+  "points": [
+    [0, 0],
+    [200, 0]
+  ],
+  "endArrowhead": "arrow",
   "startBinding": { "elementId": "rect1", "fixedPoint": [1, 0.5] },
   "endBinding": { "elementId": "rect2", "fixedPoint": [0, 0.5] }
 }
@@ -293,27 +316,27 @@ Available tools: `create_canvas`, `list_canvases`, `get_canvas`, `set_elements`,
 
 ## Complete API Reference
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/canvases` | Create canvas |
-| `GET` | `/api/canvases` | List canvases |
-| `GET` | `/api/canvases/:id` | Get canvas |
-| `PATCH` | `/api/canvases/:id` | Update name |
-| `DELETE` | `/api/canvases/:id` | Delete canvas |
-| `PUT` | `/api/canvases/:id/elements` | Replace all elements |
-| `PATCH` | `/api/canvases/:id/elements` | Add/update/remove elements |
-| `GET` | `/api/canvases/:id/elements` | Query elements (?type, ?id, ?near) |
-| `GET` | `/api/canvases/:id/describe` | Text description of canvas |
-| `POST` | `/api/canvases/:id/validate` | Validate element JSON |
-| `GET` | `/api/canvases/:id/export` | Export as .excalidraw file |
-| `GET` | `/api/canvases/:id/screenshot` | PNG (browser) or SVG (fallback) |
-| `GET` | `/api/canvases/:id/svg` | Server-side SVG render |
-| `POST` | `/api/canvases/:id/template` | Generate diagram from data |
-| `POST` | `/api/canvases/:id/layout` | Auto-layout elements |
-| `GET` | `/api/canvases/:id/events` | SSE event stream |
-| `POST` | `/api/canvases/:id/snapshots` | Save snapshot |
-| `GET` | `/api/canvases/:id/snapshots` | List snapshots |
-| `POST` | `/api/canvases/:id/snapshots/:sid/restore` | Restore snapshot |
+| Method   | Endpoint                                   | Description                        |
+| -------- | ------------------------------------------ | ---------------------------------- |
+| `POST`   | `/api/canvases`                            | Create canvas                      |
+| `GET`    | `/api/canvases`                            | List canvases                      |
+| `GET`    | `/api/canvases/:id`                        | Get canvas                         |
+| `PATCH`  | `/api/canvases/:id`                        | Update name                        |
+| `DELETE` | `/api/canvases/:id`                        | Delete canvas                      |
+| `PUT`    | `/api/canvases/:id/elements`               | Replace all elements               |
+| `PATCH`  | `/api/canvases/:id/elements`               | Add/update/remove elements         |
+| `GET`    | `/api/canvases/:id/elements`               | Query elements (?type, ?id, ?near) |
+| `GET`    | `/api/canvases/:id/describe`               | Text description of canvas         |
+| `POST`   | `/api/canvases/:id/validate`               | Validate element JSON              |
+| `GET`    | `/api/canvases/:id/export`                 | Export as .excalidraw file         |
+| `GET`    | `/api/canvases/:id/screenshot`             | PNG (browser) or SVG (fallback)    |
+| `GET`    | `/api/canvases/:id/svg`                    | Server-side SVG render             |
+| `POST`   | `/api/canvases/:id/template`               | Generate diagram from data         |
+| `POST`   | `/api/canvases/:id/layout`                 | Auto-layout elements               |
+| `GET`    | `/api/canvases/:id/events`                 | SSE event stream                   |
+| `POST`   | `/api/canvases/:id/snapshots`              | Save snapshot                      |
+| `GET`    | `/api/canvases/:id/snapshots`              | List snapshots                     |
+| `POST`   | `/api/canvases/:id/snapshots/:sid/restore` | Restore snapshot                   |
 
 ## Tips
 
