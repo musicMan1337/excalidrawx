@@ -5,7 +5,42 @@ description: Start ExcalidrawX and create diagrams via MCP tools. Triggers on: e
 
 # ExcalidrawX
 
-Create drawings and diagrams in ExcalidrawX using the Excalidraw MCP tools.
+Create drawings and diagrams in ExcalidrawX using MCP tools.
+
+## MCP Setup
+
+Before drawing, verify the ExcalidrawX MCP server is available. If tools prefixed `mcp__excalidrawx__` are not available, the user needs to add this to their MCP config:
+
+**Claude Code** — add to `.claude/settings.json` (already included in this repo):
+
+```json
+{
+  "mcpServers": {
+    "excalidrawx": {
+      "command": "npx",
+      "args": ["tsx", "server/mcp.ts"],
+      "cwd": "/path/to/excalidrawx"
+    }
+  }
+}
+```
+
+**Claude Desktop** — add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows), same JSON as above.
+
+**Cursor** — add to `.cursor/mcp.json` in your project root, same JSON as above.
+
+After adding the config, restart your MCP client to pick up the new server.
+
+## Startup
+
+1. Check if the backend is running: `curl -sf http://localhost:3001/api/canvases > /dev/null 2>&1`
+2. If NOT running, start it in the background:
+   ```bash
+   cd /path/to/excalidrawx && npm run dev
+   ```
+   This launches both Express (port 3001) and Vite (port 5173) via `concurrently`.
+3. Wait a few seconds and confirm the API responds before proceeding.
+4. Tell the user: **View your drawings at http://localhost:5173**
 
 ## Locations
 
@@ -13,17 +48,6 @@ Create drawings and diagrams in ExcalidrawX using the Excalidraw MCP tools.
 - **Frontend UI**: `http://localhost:5173`
 - **Server entry**: `server/index.ts` (Express + WebSocket on port 3001)
 - **MCP entry**: `server/mcp.ts` (stdio transport, talks to the API)
-
-## Startup
-
-1. Check if the backend is running: `curl -sf http://localhost:3001/api/canvases > /dev/null 2>&1`
-2. If NOT running, start it in the background:
-   ```bash
-   npm run dev
-   ```
-   This launches both Express (port 3001) and Vite (port 5173) via `concurrently`.
-3. Wait a few seconds and confirm the API responds before proceeding.
-4. Tell the user: **View your drawings at http://localhost:5173**
 
 ## Creating the Drawing
 

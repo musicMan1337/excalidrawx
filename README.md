@@ -58,9 +58,15 @@ The MCP server connects to `http://localhost:3001` by default. Override with the
 EXCALIDRAWX_API=http://myserver:3001 npm run mcp
 ```
 
-### Claude Code
+### Setup
 
-Add ExcalidrawX to your Claude Code MCP configuration. Edit `~/.claude/claude_desktop_config.json` (or your project's `.claude/settings.json`):
+The API server must be running (`npm run dev` in a separate terminal). The MCP server proxies all tool calls to it via HTTP.
+
+Pick your client below and add the config. Replace `/path/to/excalidrawx` with the absolute path to this repo.
+
+#### Claude Code
+
+If you cloned this repo, the config is already in `.claude/settings.json`. Otherwise, add to your project's `.claude/settings.json`:
 
 ```json
 {
@@ -68,13 +74,51 @@ Add ExcalidrawX to your Claude Code MCP configuration. Edit `~/.claude/claude_de
     "excalidrawx": {
       "command": "npx",
       "args": ["tsx", "server/mcp.ts"],
-      "cwd": "/absolute/path/to/excalidrawx"
+      "cwd": "/path/to/excalidrawx"
     }
   }
 }
 ```
 
-Then in Claude Code, you can say things like:
+#### Claude Desktop
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "excalidrawx": {
+      "command": "npx",
+      "args": ["tsx", "server/mcp.ts"],
+      "cwd": "/path/to/excalidrawx"
+    }
+  }
+}
+```
+
+#### Cursor
+
+Add to `.cursor/mcp.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "excalidrawx": {
+      "command": "npx",
+      "args": ["tsx", "server/mcp.ts"],
+      "cwd": "/path/to/excalidrawx"
+    }
+  }
+}
+```
+
+#### Any MCP client (generic)
+
+The server uses stdio transport and implements the `2024-11-05` protocol version. Run `npx tsx server/mcp.ts` from the repo root and connect via stdin/stdout. Override the API URL with `EXCALIDRAWX_API=http://host:port` env var if needed.
+
+### Usage
+
+Once connected, you can say things like:
 
 - _"Create a canvas called Architecture Diagram"_
 - _"Draw a flowchart with nodes: User, API, Database"_
@@ -83,32 +127,9 @@ Then in Claude Code, you can say things like:
 - _"Describe what's on the canvas"_
 - _"Save a snapshot before I make changes"_
 
-Claude Code will automatically call the appropriate ExcalidrawX MCP tools.
-
-**Prerequisites**: The API server must be running (`npm run dev` in a separate terminal). The MCP server makes HTTP requests to it — it doesn't access the database directly.
+Your MCP client will automatically call the appropriate ExcalidrawX tools.
 
 **Screenshots**: When you ask for a screenshot, the MCP server returns it as an image content block that Claude can see and reason about visually. If a browser has the canvas open, you get a high-fidelity PNG. Otherwise, you get a server-rendered SVG.
-
-### Other MCP clients
-
-Any client that supports the MCP stdio transport can use ExcalidrawX. The server implements the `2024-11-05` protocol version and responds to `initialize`, `tools/list`, and `tools/call` methods.
-
-Example with Claude Desktop (`claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "excalidrawx": {
-      "command": "npx",
-      "args": ["tsx", "server/mcp.ts"],
-      "cwd": "/absolute/path/to/excalidrawx",
-      "env": {
-        "EXCALIDRAWX_API": "http://localhost:3001"
-      }
-    }
-  }
-}
-```
 
 ## Agent Features
 

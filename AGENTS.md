@@ -298,7 +298,11 @@ Elements follow the Excalidraw format. Every element needs at minimum:
 
 ## MCP Server
 
-If your client supports MCP, configure ExcalidrawX as an MCP server for native tool access:
+The API server must be running (`npm run dev`) for MCP to work. Add one of the following configs to your MCP client, replacing `/path/to/excalidrawx` with the actual path to this repo.
+
+### Claude Code
+
+Add to your project's `.claude/settings.json` (already included if you cloned this repo):
 
 ```json
 {
@@ -311,6 +315,42 @@ If your client supports MCP, configure ExcalidrawX as an MCP server for native t
   }
 }
 ```
+
+### Claude Desktop
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "excalidrawx": {
+      "command": "npx",
+      "args": ["tsx", "server/mcp.ts"],
+      "cwd": "/path/to/excalidrawx"
+    }
+  }
+}
+```
+
+### Cursor
+
+Add to `.cursor/mcp.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "excalidrawx": {
+      "command": "npx",
+      "args": ["tsx", "server/mcp.ts"],
+      "cwd": "/path/to/excalidrawx"
+    }
+  }
+}
+```
+
+### Any MCP client (generic)
+
+The server uses stdio transport and implements the `2024-11-05` MCP protocol. Run `npx tsx server/mcp.ts` from the repo root and connect via stdin/stdout. Override the API URL with `EXCALIDRAWX_API` env var if needed.
 
 Available tools: `create_canvas`, `list_canvases`, `get_canvas`, `set_elements`, `patch_elements`, `query_elements`, `describe_canvas`, `screenshot`, `validate_elements`, `apply_template`, `layout_elements`, `save_snapshot`, `list_snapshots`, `restore_snapshot`, `export_canvas`.
 
